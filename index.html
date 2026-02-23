@@ -1,0 +1,3457 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>YOLO Labeler</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; height: 100vh; display: flex; flex-direction: column; }
+
+#header { background: #16213e; padding: 10px 15px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; border-bottom: 1px solid #333; }
+#header input[type="text"] { padding: 8px 12px; background: #0f3460; border: 1px solid #333; color: #eee; border-radius: 4px; }
+#header select { padding: 8px; background: #0f3460; border: 1px solid #333; color: #eee; border-radius: 4px; }
+
+.btn { padding: 8px 16px; background: #e94560; border: none; color: white; cursor: pointer; border-radius: 4px; font-size: 13px; }
+.btn:hover { background: #ff6b6b; }
+.btn:disabled { background: #555; cursor: not-allowed; }
+.btn-secondary { background: #0f3460; border: 1px solid #e94560; }
+.btn-secondary.active { background: #e94560; }
+.btn-sm { padding: 5px 10px; font-size: 12px; }
+
+#settings-bar { background: #0f3460; padding: 8px 15px; display: flex; align-items: center; gap: 15px; flex-wrap: wrap; border-bottom: 1px solid #333; }
+.setting-group { display: flex; align-items: center; gap: 8px; }
+.setting-group label { font-size: 12px; color: #aaa; }
+
+#progress-section { background: #162447; padding: 8px 15px; display: flex; align-items: center; gap: 15px; flex-wrap: wrap; }
+.progress-bar { flex: 1; height: 8px; background: #16213e; border-radius: 4px; overflow: hidden; max-width: 400px; }
+.progress-bar-fill { height: 100%; background: #e94560; transition: width 0.3s; }
+#progress-text { font-size: 13px; color: #aaa; }
+
+#pagination { display: flex; align-items: center; gap: 8px; }
+#pagination span { font-size: 13px; }
+#pagination input { width: 50px; padding: 4px 8px; background: #16213e; border: 1px solid #333; color: #eee; border-radius: 4px; text-align: center; }
+
+#main-container { flex: 1; display: flex; overflow: hidden; }
+
+#grid-container { flex: 1; overflow-y: auto; padding: 15px; min-height: 0; }
+#grid { display: grid; grid-template-columns: repeat(var(--cols, 4), 1fr); gap: 8px; align-content: start; }
+#grid.full-width-mode { display: flex; flex-wrap: wrap; align-items: flex-end; }
+#grid.full-width-mode .grid-item { flex: 0 0 auto; }
+#grid.full-width-mode .grid-row { display: flex; width: 100%; gap: 8px; margin-bottom: 8px; align-items: flex-end; }
+
+.grid-item { display: flex; flex-direction: column; background: #0a0a0a; border-radius: 4px; overflow: hidden; cursor: pointer; border: 2px solid transparent; transition: border-color 0.15s; }
+.grid-item:hover { border-color: #555; }
+.grid-item.selected { border-color: #e94560; }
+.grid-item.unsaved-detected { border-color: #ffcc00; background: linear-gradient(135deg, rgba(255,200,0,0.15) 0%, transparent 50%); }
+.grid-item-image { position: relative; flex-shrink: 0; }
+.grid-item.editing::after { border-color: #00ff88; border-width: 3px; }
+
+.grid-item-canvas { width: 100%; display: block; }
+.grid-item-mark { position: absolute; top: 4px; right: 4px; width: 18px; height: 18px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: bold; z-index: 2; pointer-events: none; }
+.grid-item-mark.done { background: #2a9d5c; color: white; }
+.grid-item-mark.pending { background: rgba(80,80,80,0.7); color: #888; }
+
+.grid-item-footer { background: #111; padding: 4px 6px; }
+.grid-item-footer-top { display: flex; align-items: center; gap: 6px; }
+.grid-item-name { font-size: 10px; color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.grid-item-buttons { display: none; gap: 4px; }
+.grid-item:hover .grid-item-buttons { display: flex; }
+.grid-item-btn { padding: 2px 8px; border-radius: 3px; border: none; cursor: pointer; font-size: 10px; font-weight: bold; }
+.grid-item-btn.detect { background: #e94560; color: white; }
+.grid-item-btn.detect:hover { background: #ff5a7a; }
+.grid-item-btn.save { background: #2a9d5c; color: white; }
+.grid-item-btn.save:hover { background: #3ab76e; }
+.grid-item-counts { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; }
+.grid-item-counts .tag { padding: 1px 4px; border-radius: 2px; font-size: 9px; font-weight: bold; }
+
+#sidebar { width: 220px; background: #16213e; padding: 12px; overflow-y: auto; border-left: 1px solid #333; display: flex; flex-direction: column; gap: 10px; }
+#sidebar h3 { font-size: 12px; color: #e94560; margin-bottom: 5px; }
+
+.class-btn { display: flex; align-items: center; gap: 6px; padding: 5px 8px; background: #0f3460; border: 1px solid #333; border-radius: 4px; cursor: pointer; font-size: 11px; transition: all 0.15s; }
+.class-btn:hover { border-color: #e94560; }
+.class-btn.active { background: #e94560; border-color: #e94560; }
+.class-btn .key { background: #333; padding: 1px 5px; border-radius: 3px; font-family: monospace; min-width: 18px; text-align: center; font-size: 10px; cursor: pointer; }
+.class-btn .key:hover { background: #555; }
+.class-btn .color { width: 10px; height: 10px; border-radius: 2px; cursor: pointer; border: 1px solid transparent; }
+.class-btn .color:hover { border-color: #fff; }
+.class-btn .class-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.class-btn .class-check { width: 14px; height: 14px; cursor: pointer; accent-color: #e94560; flex-shrink: 0; }
+.class-header { display: flex; align-items: center; gap: 6px; padding: 2px 8px; font-size: 9px; color: #666; margin-bottom: 4px; }
+.class-header .hdr-key { min-width: 18px; text-align: center; }
+.class-header .hdr-color { width: 10px; }
+.class-header .hdr-name { flex: 1; }
+.class-header .hdr-check { width: 14px; text-align: center; flex-shrink: 0; }
+
+#grid-wrapper { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+#label-counts-footer { background: #16213e; padding: 8px 15px; border-top: 1px solid #333; display: none; flex-wrap: wrap; gap: 8px; align-items: center; flex-shrink: 0; }
+#label-counts-footer.visible { display: flex; }
+.label-count-tag { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; }
+.label-count-tag .count { background: rgba(0,0,0,0.3); padding: 1px 6px; border-radius: 3px; margin-left: 4px; }
+
+.help-text { font-size: 10px; color: #666; line-height: 1.5; margin-top: auto; }
+
+#status-bar { background: #0f3460; padding: 8px 15px; font-size: 12px; color: #888; border-top: 1px solid #333; transition: background 0.3s; }
+#status-bar.pending { background: #3d3d00; color: #ffcc00; }
+#status-bar.saving { background: #0f3460; color: #66ccff; }
+#status-bar.saved { background: #1a3d1a; color: #66ff66; }
+
+#modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 1000; }
+#modal-overlay.visible { display: flex; justify-content: center; align-items: center; }
+
+.popup-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 900; justify-content: center; align-items: center; }
+.popup-overlay.visible { display: flex; }
+.popup-content { background: #1a1a2e; border-radius: 8px; padding: 15px; border: 1px solid #333; }
+.popup-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-weight: bold; }
+.popup-close { background: none; border: none; color: #fff; font-size: 20px; cursor: pointer; padding: 0 5px; }
+.popup-close:hover { color: #e94560; }
+
+#modal { background: #1a1a2e; border-radius: 8px; max-width: 95vw; max-height: 95vh; display: flex; flex-direction: column; border: 1px solid #333; }
+#modal-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 15px; background: #16213e; border-bottom: 1px solid #333; border-radius: 8px 8px 0 0; }
+#modal-title { font-size: 14px; font-weight: bold; }
+#modal-close { background: none; border: none; color: #888; font-size: 24px; cursor: pointer; padding: 0 5px; }
+#modal-close:hover { color: #e94560; }
+
+#modal-body { display: flex; flex: 1; overflow: hidden; }
+#modal-canvas-container { flex: 1; overflow: auto; display: flex; justify-content: center; align-items: center; background: #0a0a0a; padding: 10px; }
+#modal-canvas { cursor: crosshair; max-width: 100%; }
+
+#modal-sidebar { width: 240px; background: #16213e; padding: 12px; overflow-y: auto; border-left: 1px solid #333; display: flex; flex-direction: column; gap: 8px; }
+#modal-regions-list { flex: 1; overflow-y: auto; min-height: 100px; max-height: 200px; }
+.region-item { display: flex; align-items: center; gap: 6px; padding: 5px 8px; background: #0f3460; border: 1px solid transparent; border-radius: 4px; margin-bottom: 3px; cursor: pointer; font-size: 11px; }
+.region-item:hover { border-color: #555; }
+.region-item.selected { border-color: #e94560; background: #1a1a3e; }
+.region-item.unknown { background: #3d1515; border-color: #ff4444; }
+.region-item .color { width: 8px; height: 8px; border-radius: 2px; }
+
+#modal-info { background: #0f3460; padding: 8px; border-radius: 4px; font-size: 10px; font-family: monospace; }
+#modal-mode { padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 11px; text-align: center; }
+#modal-mode.draw { background: #e94560; }
+#modal-mode.select { background: #0f3460; border: 1px solid #e94560; }
+
+#modal-footer { display: flex; justify-content: space-between; align-items: center; padding: 10px 15px; background: #16213e; border-top: 1px solid #333; border-radius: 0 0 8px 8px; gap: 10px; }
+
+#cursor-label { position: fixed; pointer-events: none; padding: 2px 6px; border-radius: 3px; font-size: 11px; font-weight: bold; z-index: 9999; display: none; white-space: nowrap; }
+
+#zoom-window { position: fixed; pointer-events: none; width: 220px; height: 220px; border: 2px solid #e94560; border-radius: 4px; background: #000; z-index: 9998; display: none; box-shadow: 0 4px 12px rgba(0,0,0,0.5); transform: translate(-50%, -50%); }
+#zoom-window canvas { width: 100%; height: 100%; image-rendering: pixelated; cursor: none; }
+#zoom-window::after { content: '+'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: rgba(255,255,255,0.7); font-size: 24px; font-weight: bold; pointer-events: none; text-shadow: 0 0 2px #000, 0 0 4px #000; }
+
+#hotkey-modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #1a1a2e; border: 1px solid #e94560; border-radius: 8px; padding: 20px; z-index: 2000; min-width: 300px; }
+#hotkey-modal.visible { display: block; }
+#hotkey-modal h3 { margin-bottom: 15px; color: #e94560; }
+#hotkey-modal input { padding: 10px; font-size: 16px; text-align: center; background: #0f3460; border: 1px solid #333; color: #eee; border-radius: 4px; width: 100%; }
+
+#create-yaml-modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #1a1a2e; border: 1px solid #e94560; border-radius: 8px; padding: 20px; z-index: 2000; min-width: 400px; }
+#create-yaml-modal.visible { display: block; }
+#create-yaml-modal h3 { margin-bottom: 10px; color: #e94560; }
+#create-yaml-modal textarea { padding: 10px; font-size: 13px; background: #0f3460; border: 1px solid #333; color: #eee; border-radius: 4px; width: 100%; resize: vertical; font-family: monospace; }
+#hotkey-modal .btns { display: flex; gap: 10px; margin-top: 15px; justify-content: flex-end; }
+
+#split-modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #1a1a2e; border: 1px solid #e94560; border-radius: 8px; padding: 20px; z-index: 2000; min-width: 350px; }
+#split-modal.visible { display: block; }
+#split-modal h3 { margin-bottom: 10px; color: #e94560; }
+#split-modal .btns { display: flex; gap: 10px; margin-top: 15px; justify-content: flex-end; }
+</style>
+</head>
+<body>
+
+<div id="header">
+  <input type="text" id="yaml-path" placeholder="Path to data.yaml" style="width:350px;">
+  <button class="btn" onclick="loadDataset()">Load Dataset</button>
+  <button class="btn btn-secondary btn-sm" onclick="rebuildLabelCache()" title="Scan folder for existing labels">↻ Cache</button>
+  <select id="split-select" onchange="changeSplit()">
+    <option value="train">Train</option>
+    <option value="val">Validation</option>
+  </select>
+  <button class="btn btn-secondary btn-sm" onclick="openSplitModal()" title="Split/reshuffle train and val sets">⚡ Split</button>
+  <input type="text" id="model-path" placeholder="Model path (optional)" style="width:250px;" onchange="saveSettings()">
+</div>
+
+<div id="settings-bar">
+  <div class="setting-group">
+    <label>Grid:</label>
+    <input type="number" id="grid-cols" value="4" min="1" max="10" style="width:50px;" onchange="updateGrid(); saveSettings()">
+    <span>×</span>
+    <input type="number" id="grid-rows" value="3" min="1" max="10" style="width:50px;" onchange="updateGrid()">
+  </div>
+  <div class="setting-group">
+    <label><input type="checkbox" id="full-width-mode" onchange="updateGrid(); saveSettings()"> Full width</label>
+  </div>
+  <div class="setting-group">
+    <label><input type="checkbox" id="paginate-grid" checked onchange="updateGrid()"> Paginate</label>
+  </div>
+  <div class="setting-group">
+    <label><input type="checkbox" id="auto-detect" onchange="saveSettings()"> Auto-detect</label>
+  </div>
+  <div class="setting-group">
+    <label><input type="checkbox" id="autosave-on-detect" onchange="saveSettings()"> Autosave on detect</label>
+  </div>
+  <div class="setting-group">
+    <label><input type="checkbox" id="deselect-after-draw" checked onchange="saveSettings()"> Deselect after draw</label>
+  </div>
+  <div class="setting-group">
+    <label><input type="checkbox" id="enable-zoom" checked onchange="saveSettings()"> Zoom cursor</label>
+    <input type="range" id="zoom-size" min="150" max="350" value="220" style="width:80px;vertical-align:middle;margin-left:8px;" onchange="updateZoomSize(); saveSettings()" oninput="updateZoomSize()">
+  </div>
+  <div class="setting-group">
+    <label>Opacity: <span id="opacity-value">75%</span></label>
+    <input type="range" id="region-opacity" min="0" max="100" value="75" style="width:80px;vertical-align:middle;margin-left:4px;" onchange="updateOpacity(); saveSettings()" oninput="updateOpacity()">
+  </div>
+  <div class="setting-group">
+    <label><input type="checkbox" id="edit-in-grid" onchange="toggleEditInGrid(); saveSettings()"> Edit in grid</label>
+  </div>
+  <button class="btn btn-secondary btn-sm" onclick="openHotkeyEditor()">Edit Hotkeys</button>
+</div>
+
+<div id="progress-section">
+  <div class="progress-bar"><div class="progress-bar-fill" id="progress-fill"></div></div>
+  <span id="progress-text">0 / 0</span>
+  <div style="flex:1"></div>
+  <div id="pagination">
+    <button class="btn btn-secondary btn-sm" onclick="firstPage()">««</button>
+    <button class="btn btn-secondary btn-sm" onclick="prevPage()">‹</button>
+    <span>Page <input type="number" id="page-input" value="1" min="1" onchange="goToPage()"> / <span id="total-pages">1</span></span>
+    <button class="btn btn-secondary btn-sm" onclick="nextPage()">›</button>
+    <button class="btn btn-secondary btn-sm" onclick="lastPage()">»»</button>
+  </div>
+  <button class="btn btn-sm" onclick="saveAllOnPage()">Save Page</button>
+  <button class="btn btn-sm btn-secondary" onclick="saveAllUnsavedDetected()" title="Save all images with unsaved detections">Save Detected</button>
+  <label style="margin-left:8px;font-size:12px;"><input type="checkbox" id="only-with-regions" onchange="saveSettings()"> Only with regions</label>
+  <button class="btn btn-sm btn-secondary" onclick="toggleFilterPopup()" id="filter-btn" style="margin-left:8px;">Filter</button>
+</div>
+
+<div id="main-container">
+  <div id="grid-wrapper">
+    <div id="grid-container">
+      <div id="grid"></div>
+    </div>
+    <div id="label-counts-footer"></div>
+  </div>
+  <div id="sidebar">
+    <h3>Classes (click key to edit)</h3>
+    <div id="class-buttons"></div>
+    <button id="add-class-btn" class="btn btn-sm" onclick="showAddClassPrompt()" style="width:100%;margin:8px 0;">+ Add Class</button>
+    <div class="help-text">
+      <b>Shortcuts:</b><br>
+      Hotkey → Draw class<br>
+      Ctrl+Alt+Hotkey → Change class<br>
+      Ctrl+Drag → Clone region<br>
+      Shift+Drag → Lock H/V axis<br>
+      R → Run detection<br>
+      Del → Delete region<br>
+      Arrows → Move region 1px<br>
+      Shift+Arrows → Move 5px<br>
+      E/Enter → Expand image<br>
+      Space → Save page & next<br>
+      PgUp/PgDn → Navigate pages
+    </div>
+  </div>
+</div>
+
+<div id="status-bar">Load a data.yaml to begin</div>
+<div id="cursor-label"></div>
+<div id="zoom-window"><canvas width="220" height="220"></canvas></div>
+
+<div id="filter-overlay" class="popup-overlay" onclick="if(event.target===this)toggleFilterPopup()">
+  <div class="popup-content" style="width:450px;">
+    <div class="popup-header">
+      <span>Filter by Filename</span>
+      <button class="popup-close" onclick="toggleFilterPopup()">×</button>
+    </div>
+    <textarea id="filter-names" placeholder="Enter filenames (one per line)&#10;Matches by substring in filename" rows="15" style="width:100%;background:#0a0a0a;color:#fff;border:1px solid #333;border-radius:3px;font-size:12px;resize:vertical;font-family:monospace;padding:8px;box-sizing:border-box;"></textarea>
+    <div style="margin-top:8px;display:flex;gap:6px;align-items:center;">
+      <button class="btn btn-sm" onclick="applyFilter()">Apply</button>
+      <button class="btn btn-sm btn-secondary" onclick="clearFilter()">Clear</button>
+      <span id="filter-status" style="margin-left:8px;font-size:11px;color:#888;"></span>
+    </div>
+  </div>
+</div>
+
+<div id="modal-overlay" onclick="if(event.target===this)closeModal()">
+  <div id="modal">
+    <div id="modal-header">
+      <span id="modal-title">Image</span>
+      <button id="modal-close" onclick="closeModal()">×</button>
+    </div>
+    <div id="modal-body">
+      <div id="modal-canvas-container">
+        <canvas id="modal-canvas"></canvas>
+      </div>
+      <div id="modal-sidebar">
+        <div id="modal-mode" class="select">SELECT</div>
+        <h3>Regions</h3>
+        <div id="modal-regions-list"></div>
+        <div id="modal-info">
+          <div id="modal-image-size">-</div>
+          <div id="modal-region-info">Select a region</div>
+        </div>
+        <h3>Classes</h3>
+        <div id="modal-class-buttons"></div>
+      </div>
+    </div>
+    <div id="modal-footer">
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-secondary btn-sm" onclick="modalClear()">Clear</button>
+        <button class="btn btn-secondary btn-sm" onclick="modalDetect()">Detect</button>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-secondary btn-sm" onclick="modalPrev()">◀ Prev</button>
+        <button class="btn btn-secondary btn-sm" onclick="modalNext()">Next ▶</button>
+      </div>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-secondary" onclick="modalSave()">Save</button>
+        <button class="btn" onclick="modalSaveClose()">Save & Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="hotkey-modal">
+  <h3>Set Hotkey for: <span id="hotkey-class-name"></span></h3>
+  <input type="text" id="hotkey-input" maxlength="1" placeholder="Press a key">
+  <div class="btns">
+    <button class="btn btn-secondary" onclick="closeHotkeyModal()">Cancel</button>
+    <button class="btn" onclick="saveHotkey()">Save</button>
+  </div>
+</div>
+
+<input type="color" id="color-picker-input" style="position:absolute;visibility:hidden;">
+
+<div id="create-yaml-modal">
+  <h3>Create data.yaml</h3>
+  <p style="margin-bottom:10px;color:#aaa;font-size:12px;">No data.yaml found. Enter class names (one per line):</p>
+  <textarea id="yaml-classes-input" rows="10" placeholder="class1&#10;class2&#10;class3"></textarea>
+  <div class="btns">
+    <button class="btn btn-secondary" onclick="closeYamlModal()">Cancel</button>
+    <button class="btn" onclick="createYaml()">Create</button>
+  </div>
+</div>
+
+<div id="split-modal">
+  <h3>Split / Reshuffle Dataset</h3>
+  <p style="margin-bottom:15px;color:#aaa;font-size:12px;">Redistribute images between train and validation sets.</p>
+  <div style="margin-bottom:12px;">
+    <label style="display:block;margin-bottom:4px;font-size:12px;">Validation %:</label>
+    <input type="number" id="split-val-percent" value="20" min="1" max="50" style="width:80px;padding:6px;background:#0f3460;border:1px solid #333;color:#eee;border-radius:4px;">
+    <span style="margin-left:8px;color:#888;font-size:12px;">(train will get the rest)</span>
+  </div>
+  <div style="margin-bottom:12px;">
+    <label style="font-size:12px;">
+      <input type="checkbox" id="split-only-labeled" style="margin-right:6px;">
+      Only include images with labels
+    </label>
+  </div>
+  <div style="margin-bottom:15px;">
+    <label style="font-size:12px;">
+      <input type="checkbox" id="split-shuffle" checked style="margin-right:6px;">
+      Shuffle before splitting
+    </label>
+  </div>
+  <div id="split-preview" style="background:#0f3460;padding:8px;border-radius:4px;font-size:11px;margin-bottom:15px;display:none;"></div>
+  <div class="btns">
+    <button class="btn btn-secondary" onclick="closeSplitModal()">Cancel</button>
+    <button class="btn" onclick="executeSplit()">Split Dataset</button>
+  </div>
+</div>
+
+<script>
+// State
+let yamlPath = '';
+let datasetBase = '';
+let classNames = {};
+let hotkeys = {};
+let colors = {};
+let customColors = {};
+let editingColorClass = null;
+let images = [];
+let allImages = []; // Unfiltered list
+let activeFilter = []; // Current filter substrings
+let progress = { completed: [], current_index: 0 };
+let currentPage = 0;
+let perPage = 12;
+let selectedIndex = -1;
+let drawingClass = null;
+let imageCache = {};
+let autoSaveTimeout = null;
+let autoSavePending = null;
+let saveQueue = [];
+let saveQueueProcessing = false;
+
+// Dataset structure
+let datasetStructure = 'flat'; // 'split', 'flat', 'same'
+let hasSplit = false;
+let trainPath = 'images';
+let valPath = 'images';
+
+// Grid edit state
+let editInGrid = false;
+let gridEditIndex = -1;
+let gridEditRegions = [];
+let gridEditSelectedIdx = -1;
+let gridEditDrawing = false;
+let gridEditStart = { x: 0, y: 0 };
+let gridEditCurrent = { x: 0, y: 0 };
+let gridDragMode = null;
+let gridDragStart = { x: 0, y: 0 };
+let gridDragRegion = null;
+let gridCloneMode = false;
+let gridClonePreview = null;
+let gridAxisLock = null; // 'h' for horizontal, 'v' for vertical, null for free
+
+// Modal state
+let modalOpen = false;
+let modalIndex = -1;
+let modalImg = null;
+let modalRegions = [];
+let modalSelectedIdx = -1;
+let modalDrawing = false;
+let modalStart = { x: 0, y: 0 };
+let modalCurrent = { x: 0, y: 0 };
+let modalDragMode = null;
+let modalDragStart = { x: 0, y: 0 };
+let modalDragRegion = null;
+let modalCloneMode = false;
+let modalClonePreview = null;
+let modalAxisLock = null; // 'h' for horizontal, 'v' for vertical, null for free
+
+// Hotkey editor
+let editingHotkeyClass = null;
+
+const modalCanvas = document.getElementById('modal-canvas');
+const modalCtx = modalCanvas.getContext('2d');
+const HANDLE_SIZE = 8;
+
+function genColors(n) {
+  const c = [];
+  for (let i = 0; i < n; i++) {
+    c.push(`hsl(${(i * 137.5) % 360}, 70%, 55%)`);
+  }
+  return c;
+}
+
+function hslToHex(hsl) {
+  const match = hsl.match(/hsl\((\d+(?:\.\d+)?),\s*(\d+)%,\s*(\d+)%\)/);
+  if (!match) return hsl;
+  let h = parseFloat(match[1]) / 360;
+  let s = parseInt(match[2]) / 100;
+  let l = parseInt(match[3]) / 100;
+  let r, g, b;
+  if (s === 0) {
+    r = g = b = l;
+  } else {
+    const hue2rgb = (p, q, t) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1/6) return p + (q - p) * 6 * t;
+      if (t < 1/2) return q;
+      if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+      return p;
+    };
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1/3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1/3);
+  }
+  const toHex = x => {
+    const hex = Math.round(x * 255).toString(16);
+    return hex.length === 1 ? '0' + hex : hex;
+  };
+  return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+}
+
+function editColor(className, event) {
+  event.stopPropagation();
+  editingColorClass = className;
+  const picker = document.getElementById('color-picker-input');
+  const currentColor = colors[className] || '#888888';
+  picker.value = currentColor.startsWith('hsl') ? hslToHex(currentColor) : currentColor;
+  picker.click();
+}
+
+document.getElementById('color-picker-input').addEventListener('input', function(e) {
+  if (editingColorClass) {
+    const newColor = e.target.value;
+    colors[editingColorClass] = newColor;
+    customColors[editingColorClass] = newColor;
+    renderClassButtons();
+    if (modalOpen) {
+      renderModal();
+    } else {
+      renderGrid();
+    }
+    updateAllGridItemCounts();
+    saveSettings();
+  }
+});
+
+function setStatus(msg, type = '') {
+  const bar = document.getElementById('status-bar');
+  bar.textContent = msg;
+  bar.className = type;
+}
+
+function scheduleAutoSave(imagePath, regions, immediate = false) {
+  // Update label counts immediately when regions change
+  const idx = images.indexOf(imagePath);
+  if (idx >= 0) updateGridItemCounts(idx);
+  if (countedClasses.size > 0) {
+    updateLabelCountsFooter();
+  }
+  
+  if (immediate) {
+    // Queue for batch processing (used by auto-detect)
+    queueSave(imagePath, regions);
+  } else {
+    // Debounced save for manual edits
+    if (autoSaveTimeout) {
+      clearTimeout(autoSaveTimeout);
+    }
+    autoSavePending = imagePath;
+    const filename = imagePath.split(/[/\\]/).pop();
+    setStatus(`● Modified: ${filename} (auto-save in 1s...)`, 'pending');
+    
+    autoSaveTimeout = setTimeout(async () => {
+      if (autoSavePending === imagePath) {
+        await saveImageLabels(imagePath);
+        autoSavePending = null;
+      }
+    }, 1000);
+  }
+}
+
+function queueSave(imagePath, regions) {
+  // Check if already in queue
+  if (!saveQueue.find(item => item.path === imagePath)) {
+    saveQueue.push({ path: imagePath, regions: regions });
+    updateSaveQueueStatus();
+  }
+  processSaveQueue();
+}
+
+async function processSaveQueue() {
+  if (saveQueueProcessing || saveQueue.length === 0) return;
+  
+  saveQueueProcessing = true;
+  
+  while (saveQueue.length > 0) {
+    const item = saveQueue.shift();
+    await saveImageLabels(item.path);
+    updateSaveQueueStatus();
+  }
+  
+  saveQueueProcessing = false;
+  if (!autoSavePending && saveQueue.length === 0) {
+    setTimeout(() => {
+      if (!autoSavePending && saveQueue.length === 0) setStatus('Ready');
+    }, 1500);
+  }
+}
+
+function updateSaveQueueStatus() {
+  if (saveQueue.length > 0) {
+    setStatus(`● Saving... (${saveQueue.length} in queue)`, 'saving');
+  }
+}
+
+async function saveImageLabels(imagePath) {
+  const filename = imagePath.split(/[/\\]/).pop();
+  const currentRegions = imageCache[imagePath]?.regions || [];
+  
+  setStatus(`● Saving: ${filename}...`, 'saving');
+  
+  await fetch('/save', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      image_path: imagePath,
+      regions: currentRegions,
+      dataset_base: datasetBase,
+      structure: datasetStructure,
+      classes: classNames
+    })
+  });
+  
+  // Mark as completed and update UI
+  if (!progress.completed.includes(imagePath)) {
+    progress.completed.push(imagePath);
+  }
+  updateProgress();
+  updateGridItemMark(imagePath);
+  
+  setStatus(`✓ Saved: ${filename}`, 'saved');
+}
+
+async function saveAllUnsavedDetected() {
+  const unsavedPaths = Array.from(unsavedDetected);
+  if (unsavedPaths.length === 0) {
+    setStatus('No unsaved detections');
+    return;
+  }
+  
+  const items = unsavedPaths.map(path => ({
+    image_path: path,
+    regions: imageCache[path]?.regions || []
+  }));
+  
+  await saveBatch(items, 'detected images');
+}
+
+async function saveBatch(items, description = 'images') {
+  if (items.length === 0) {
+    setStatus('Nothing to save');
+    return;
+  }
+  
+  setStatus(`Saving ${items.length} ${description}...`, 'saving');
+  
+  try {
+    const resp = await fetch('/save_batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        items: items,
+        dataset_base: datasetBase,
+        structure: datasetStructure,
+        classes: classNames
+      })
+    });
+    const result = await resp.json();
+    
+    if (result.saved) {
+      for (const path of result.saved) {
+        if (!progress.completed.includes(path)) {
+          progress.completed.push(path);
+        }
+        updateGridItemMark(path);
+      }
+      updateProgress();
+    }
+    
+    if (result.errors && result.errors.length > 0) {
+      setStatus(`Saved ${result.count}, ${result.errors.length} errors`, 'saved');
+      console.error('Save errors:', result.errors);
+    } else {
+      setStatus(`✓ Saved ${result.count} ${description}`, 'saved');
+    }
+    
+    setTimeout(() => {
+      if (!autoSavePending && saveQueue.length === 0) setStatus('Ready');
+    }, 2000);
+    
+    return result;
+  } catch (e) {
+    setStatus('Save failed: ' + e.message);
+    return null;
+  }
+}
+
+function updateGridItemMark(imagePath) {
+  const index = images.indexOf(imagePath);
+  if (index < 0) return;
+  const item = document.querySelector(`.grid-item[data-index="${index}"]`);
+  if (!item) return;
+  const mark = item.querySelector('.grid-item-mark');
+  if (mark) {
+    mark.className = 'grid-item-mark done';
+    mark.textContent = '✓';
+  }
+  // Also clear unsaved state when saved
+  unsavedDetected.delete(imagePath);
+  item.classList.remove('unsaved-detected');
+}
+
+function updateGridItemUnsavedState(index) {
+  const item = document.querySelector(`.grid-item[data-index="${index}"]`);
+  if (!item) return;
+  const path = images[index];
+  if (unsavedDetected.has(path)) {
+    item.classList.add('unsaved-detected');
+  } else {
+    item.classList.remove('unsaved-detected');
+  }
+}
+
+function updateGridItemCounts(index) {
+  const item = document.querySelector(`.grid-item[data-index="${index}"]`);
+  if (!item) return;
+  
+  const countsDiv = item.querySelector('.grid-item-counts');
+  if (!countsDiv) return;
+  
+  // Clear counts if no classes are being counted
+  if (countedClasses.size === 0) {
+    countsDiv.innerHTML = '';
+    countsDiv.style.display = 'none';
+    return;
+  }
+  countsDiv.style.display = '';
+  
+  const path = images[index];
+  const regions = imageCache[path]?.regions || [];
+  
+  // Count only checked classes
+  const counts = {};
+  for (const r of regions) {
+    if (countedClasses.has(r.class)) {
+      counts[r.class] = (counts[r.class] || 0) + 1;
+    }
+  }
+  
+  // Build tags
+  countsDiv.innerHTML = '';
+  for (const [cls, count] of Object.entries(counts)) {
+    const color = colors[cls] || '#888';
+    const textColor = getContrastColor(color);
+    const tag = document.createElement('span');
+    tag.className = 'tag';
+    tag.style.background = color;
+    tag.style.color = textColor;
+    tag.textContent = `${cls}: ${count}`;
+    countsDiv.appendChild(tag);
+  }
+}
+
+async function loadDataset() {
+  yamlPath = document.getElementById('yaml-path').value.trim();
+  if (!yamlPath) return;
+  
+  localStorage.setItem('yoloLabelerYaml', yamlPath);
+  setStatus('Loading dataset...');
+  
+  try {
+    const resp = await fetch(`/load_dataset?yaml=${encodeURIComponent(yamlPath)}`);
+    const data = await resp.json();
+    
+    // Check if yaml doesn't exist (empty classes)
+    if (Object.keys(data.classes).length === 0) {
+      if (confirm('No data.yaml found at this location. Would you like to create one?')) {
+        openYamlModal();
+        return;
+      } else {
+        setStatus('No data.yaml found');
+        return;
+      }
+    }
+    
+    // Check if dataset needs reorganization (images in flat structure)
+    if (data.needs_reorganize && data.reorganize_suggestion) {
+      const reorg = data.reorganize_suggestion;
+      const msg = `${reorg.reason}\n\n` +
+                  `Would you like to move all images to 'images/train/' and labels to 'labels/train/' for proper YOLO structure?`;
+      
+      if (confirm(msg)) {
+        setStatus('Reorganizing dataset...');
+        const reorgResp = await fetch('/reorganize', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            dataset_base: data.structure.base,
+            yaml_path: yamlPath
+          })
+        });
+        const reorgResult = await reorgResp.json();
+        if (reorgResult.ok) {
+          setStatus(`Reorganized: moved ${reorgResult.moved_images} images, ${reorgResult.moved_labels} labels. Reloading...`);
+          setTimeout(() => loadDataset(), 500);
+          return;
+        } else {
+          setStatus('Failed to reorganize: ' + (reorgResult.error || 'unknown error'));
+        }
+      }
+    }
+    
+    // Check if yaml paths don't have images but alternatives do
+    if (data.needs_fix && data.fix_suggestion) {
+      const fix = data.fix_suggestion;
+      const yamlTrain = data.yaml_train || 'unknown';
+      const yamlVal = data.yaml_val || 'unknown';
+      const msg = `data.yaml specifies train="${yamlTrain}" and val="${yamlVal}" but those paths are empty.\n\n` +
+                  `${fix.reason}\n\n` +
+                  `Would you like to update data.yaml to use train="${fix.train}" and val="${fix.val}"?`;
+      
+      if (confirm(msg)) {
+        // Fix the yaml
+        const fixResp = await fetch('/fix_yaml', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            yaml_path: yamlPath,
+            train: fix.train,
+            val: fix.val
+          })
+        });
+        const fixResult = await fixResp.json();
+        if (fixResult.ok) {
+          setStatus('data.yaml updated, reloading...');
+          // Reload dataset with fixed paths
+          loadDataset();
+          return;
+        } else {
+          setStatus('Failed to fix data.yaml: ' + (fixResult.error || 'unknown error'));
+          return;
+        }
+      }
+      // User declined fix, continue with suggested paths anyway
+    }
+    
+    classNames = {};
+    for (const [k, v] of Object.entries(data.classes)) {
+      classNames[parseInt(k)] = v;
+    }
+    
+    datasetBase = data.structure.base;
+    datasetStructure = data.structure.structure;
+    hasSplit = data.has_split;
+    trainPath = data.train_path;
+    valPath = data.val_path;
+    
+    // Update split selector visibility
+    const splitSelect = document.getElementById('split-select');
+    if (hasSplit) {
+      splitSelect.style.display = '';
+      splitSelect.innerHTML = '<option value="train">Train</option><option value="val">Validation</option>';
+    } else {
+      splitSelect.style.display = 'none';
+    }
+    
+    // Generate colors
+    const colArr = genColors(Object.keys(classNames).length);
+    colors = {};
+    customColors = {};
+    ignoreOverlapClasses = new Set();
+    Object.values(classNames).forEach((name, i) => {
+      colors[name] = colArr[i];
+    });
+    
+    // Load or generate hotkeys
+    loadHotkeys();
+    renderClassButtons();
+    
+    // Load cache first
+    await loadLabelCache();
+    
+    // Load images
+    loadImages();
+    setStatus(`Loaded ${Object.keys(classNames).length} classes (${datasetStructure} structure)`);
+  } catch (e) {
+    setStatus('Failed to load: ' + e.message);
+  }
+}
+
+function loadHotkeys() {
+  const saved = localStorage.getItem(`yoloLabelerHotkeys_${yamlPath}`);
+  if (saved) {
+    hotkeys = JSON.parse(saved);
+  } else {
+    // Auto-assign hotkeys
+    const keys = '1234567890qwertyuiopasdfghjklzxcvbnm';
+    hotkeys = {};
+    Object.values(classNames).forEach((name, i) => {
+      if (i < keys.length) {
+        hotkeys[keys[i]] = name;
+      }
+    });
+  }
+}
+
+function saveHotkeys() {
+  localStorage.setItem(`yoloLabelerHotkeys_${yamlPath}`, JSON.stringify(hotkeys));
+}
+
+let countedClasses = new Set();
+let hiddenTintClasses = new Set();
+let ignoreOverlapClasses = new Set();
+let regionOpacity = 0.75;
+let unsavedDetected = new Set();
+let animationPhase = 0;
+let animationRunning = false;
+
+function updateOpacity() {
+  const val = parseInt(document.getElementById('region-opacity').value);
+  regionOpacity = val / 100;
+  document.getElementById('opacity-value').textContent = val + '%';
+  if (modalOpen) {
+    renderModal();
+  } else {
+    redrawAllGridCanvases();
+  }
+}
+
+function renderClassButtons() {
+  const container = document.getElementById('class-buttons');
+  const modalContainer = document.getElementById('modal-class-buttons');
+  container.innerHTML = '';
+  modalContainer.innerHTML = '';
+  
+  const nameToKey = {};
+  for (const [k, v] of Object.entries(hotkeys)) {
+    nameToKey[v] = k;
+  }
+  
+  // Add header row
+  const header = document.createElement('div');
+  header.className = 'class-header';
+  header.innerHTML = `<span class="hdr-key">Key</span><span class="hdr-color"></span><span class="hdr-name">Class</span><span class="hdr-check" title="Show tint">T</span><span class="hdr-check" title="Count">C</span><span class="hdr-check" title="Ignore overlaps">O</span>`;
+  container.appendChild(header);
+  
+  for (const [idx, name] of Object.entries(classNames)) {
+    const key = nameToKey[name] || '-';
+    const color = colors[name] || '#888';
+    const countChecked = countedClasses.has(name) ? 'checked' : '';
+    const tintChecked = !hiddenTintClasses.has(name) ? 'checked' : '';
+    const overlapChecked = ignoreOverlapClasses.has(name) ? 'checked' : '';
+
+    const btn = document.createElement('div');
+    btn.className = 'class-btn';
+    btn.dataset.class = name;
+    btn.innerHTML = `<span class="key" onclick="event.stopPropagation();editHotkey('${name}')">${key}</span><span class="color" style="background:${color}" onclick="editColor('${name}', event)" title="Click to change color"></span><span class="class-name">${name}</span><input type="checkbox" class="class-check" ${tintChecked} onclick="event.stopPropagation();toggleClassTint('${name}', this.checked)" title="Show tint"><input type="checkbox" class="class-check" ${countChecked} onclick="event.stopPropagation();toggleClassCount('${name}', this.checked)" title="Count"><input type="checkbox" class="class-check" ${overlapChecked} onclick="event.stopPropagation();toggleIgnoreOverlap('${name}', this.checked)" title="Ignore overlaps">`;
+    btn.onclick = () => setDrawingClass(name);
+    container.appendChild(btn);
+    
+    const btn2 = document.createElement('div');
+    btn2.className = 'class-btn';
+    btn2.dataset.class = name;
+    btn2.innerHTML = `<span class="key" onclick="event.stopPropagation();editHotkey('${name}')">${key}</span><span class="color" style="background:${color}" onclick="editColor('${name}', event)" title="Click to change color"></span><span class="class-name">${name}</span>`;
+    btn2.onclick = () => setDrawingClass(name);
+    btn2.querySelector('.key').onclick = (e) => { e.stopPropagation(); editHotkey(name); };
+    modalContainer.appendChild(btn2);
+  }
+}
+
+function toggleClassCount(className, checked) {
+  if (checked) {
+    countedClasses.add(className);
+  } else {
+    countedClasses.delete(className);
+  }
+  updateLabelCountsFooter();
+  updateAllGridItemCounts();
+  saveSettings();
+}
+
+function toggleClassTint(className, checked) {
+  if (checked) {
+    hiddenTintClasses.delete(className);
+  } else {
+    hiddenTintClasses.add(className);
+  }
+  if (modalOpen) {
+    renderModal();
+  } else {
+    redrawAllGridCanvases();
+  }
+  saveSettings();
+}
+
+function toggleIgnoreOverlap(className, checked) {
+  if (checked) {
+    ignoreOverlapClasses.add(className);
+  } else {
+    ignoreOverlapClasses.delete(className);
+  }
+  if (modalOpen) {
+    renderModal();
+  } else {
+    redrawAllGridCanvases();
+  }
+  saveSettings();
+}
+
+async function showAddClassPrompt() {
+  const name = prompt('Enter new class name:');
+  if (!name || !name.trim()) return;
+  const className = name.trim().toLowerCase().replace(/\s+/g, '_');
+  if (Object.values(classNames).includes(className)) {
+    alert('Class already exists!');
+    return;
+  }
+  await addClass(className);
+}
+
+async function addClass(className) {
+  try {
+    const resp = await fetch('/add_class', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ yaml_path: yamlPath, class_name: className })
+    });
+    const data = await resp.json();
+    if (data.error) {
+      alert('Failed to add class: ' + data.error);
+      return;
+    }
+    const newIdx = Object.keys(classNames).length;
+    classNames[newIdx] = className;
+    const colArr = genColors(Object.keys(classNames).length);
+    colors[className] = colArr[newIdx];
+    const keys = '1234567890qwertyuiopasdfghjklzxcvbnm';
+    const usedKeys = new Set(Object.keys(hotkeys));
+    for (const k of keys) {
+      if (!usedKeys.has(k)) {
+        hotkeys[k] = className;
+        break;
+      }
+    }
+    saveHotkeys();
+    renderClassButtons();
+    setStatus(`Added class: ${className}`);
+  } catch (e) {
+    alert('Failed to add class: ' + e.message);
+  }
+}
+
+function updateAllGridItemCounts() {
+  const start = currentPage * perPage;
+  const end = Math.min(start + perPage, images.length);
+  for (let i = start; i < end; i++) {
+    updateGridItemCounts(i);
+  }
+}
+
+function getContrastColor(hexColor) {
+  const r = parseInt(hexColor.slice(1, 3), 16);
+  const g = parseInt(hexColor.slice(3, 5), 16);
+  const b = parseInt(hexColor.slice(5, 7), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.5 ? '#000' : '#fff';
+}
+
+function updateLabelCountsFooter() {
+  const footer = document.getElementById('label-counts-footer');
+  
+  if (countedClasses.size === 0) {
+    footer.classList.remove('visible');
+    return;
+  }
+  
+  // Count labels across all cached images on current page
+  const counts = {};
+  for (const name of countedClasses) {
+    counts[name] = 0;
+  }
+  
+  const start = currentPage * perPage;
+  const end = Math.min(start + perPage, images.length);
+  
+  for (let i = start; i < end; i++) {
+    const path = images[i];
+    const regions = imageCache[path]?.regions || [];
+    for (const r of regions) {
+      if (countedClasses.has(r.class)) {
+        counts[r.class] = (counts[r.class] || 0) + 1;
+      }
+    }
+  }
+  
+  // Build footer HTML
+  footer.innerHTML = '';
+  for (const [name, count] of Object.entries(counts)) {
+    const color = colors[name] || '#888';
+    const textColor = getContrastColor(color);
+    const tag = document.createElement('span');
+    tag.className = 'label-count-tag';
+    tag.style.background = color;
+    tag.style.color = textColor;
+    tag.innerHTML = `${name}<span class="count">${count}</span>`;
+    footer.appendChild(tag);
+  }
+  
+  footer.classList.add('visible');
+}
+
+function editHotkey(className) {
+  editingHotkeyClass = className;
+  document.getElementById('hotkey-class-name').textContent = className;
+  document.getElementById('hotkey-input').value = '';
+  document.getElementById('hotkey-modal').classList.add('visible');
+  document.getElementById('hotkey-input').focus();
+}
+
+function closeHotkeyModal() {
+  document.getElementById('hotkey-modal').classList.remove('visible');
+  editingHotkeyClass = null;
+}
+
+function saveHotkey() {
+  const newKey = document.getElementById('hotkey-input').value.toLowerCase();
+  if (!newKey || !editingHotkeyClass) {
+    closeHotkeyModal();
+    return;
+  }
+  
+  // Remove old key for this class
+  for (const [k, v] of Object.entries(hotkeys)) {
+    if (v === editingHotkeyClass) {
+      delete hotkeys[k];
+      break;
+    }
+  }
+  
+  // Remove class from new key if exists
+  if (hotkeys[newKey]) {
+    delete hotkeys[newKey];
+  }
+  
+  hotkeys[newKey] = editingHotkeyClass;
+  saveHotkeys();
+  renderClassButtons();
+  closeHotkeyModal();
+  setStatus(`Hotkey '${newKey}' assigned to ${editingHotkeyClass}`);
+}
+
+function openYamlModal() {
+  document.getElementById('yaml-classes-input').value = '';
+  document.getElementById('create-yaml-modal').classList.add('visible');
+}
+
+function closeYamlModal() {
+  document.getElementById('create-yaml-modal').classList.remove('visible');
+}
+
+async function createYaml() {
+  const input = document.getElementById('yaml-classes-input').value.trim();
+  if (!input) {
+    alert('Please enter at least one class name');
+    return;
+  }
+  
+  const classes = input.split('\n').map(s => s.trim()).filter(s => s);
+  if (classes.length === 0) {
+    alert('Please enter at least one class name');
+    return;
+  }
+  
+  setStatus('Creating data.yaml...');
+  
+  try {
+    const resp = await fetch('/create_yaml', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        path: yamlPath,
+        classes: classes
+      })
+    });
+    const result = await resp.json();
+    
+    if (result.ok) {
+      closeYamlModal();
+      setStatus('data.yaml created, loading dataset...');
+      loadDataset();
+    } else {
+      setStatus('Failed to create data.yaml: ' + (result.error || 'unknown error'));
+    }
+  } catch (e) {
+    setStatus('Failed to create data.yaml: ' + e.message);
+  }
+}
+
+function openHotkeyEditor() {
+  // Could open a full editor, for now just show info
+  alert('Click on the key badge next to any class to change its hotkey.');
+}
+
+function openSplitModal() {
+  if (!datasetBase) {
+    alert('Load a dataset first');
+    return;
+  }
+  document.getElementById('split-modal').classList.add('visible');
+}
+
+function closeSplitModal() {
+  document.getElementById('split-modal').classList.remove('visible');
+}
+
+async function executeSplit() {
+  const valPercent = parseInt(document.getElementById('split-val-percent').value) || 20;
+  const onlyLabeled = document.getElementById('split-only-labeled').checked;
+  const shuffle = document.getElementById('split-shuffle').checked;
+  
+  if (valPercent < 1 || valPercent > 50) {
+    alert('Validation percentage must be between 1 and 50');
+    return;
+  }
+  
+  const confirmMsg = `This will redistribute all images:\n` +
+    `- ${100 - valPercent}% to train\n` +
+    `- ${valPercent}% to validation\n` +
+    (onlyLabeled ? '- Only images with labels\n' : '') +
+    (shuffle ? '- Shuffled randomly\n' : '- In current order\n') +
+    `\nContinue?`;
+  
+  if (!confirm(confirmMsg)) return;
+  
+  closeSplitModal();
+  setStatus('Splitting dataset...');
+  
+  try {
+    const resp = await fetch('/split_dataset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        dataset_base: datasetBase,
+        yaml_path: yamlPath,
+        val_percent: valPercent,
+        only_labeled: onlyLabeled,
+        shuffle: shuffle
+      })
+    });
+    const result = await resp.json();
+    
+    if (result.ok) {
+      setStatus(`Split complete: ${result.train_count} train, ${result.val_count} val (moved ${result.moved_to_train} to train, ${result.moved_to_val} to val)`);
+      // Reload images
+      loadImages();
+    } else {
+      setStatus('Split failed: ' + (result.error || 'unknown error'));
+    }
+  } catch (e) {
+    setStatus('Split failed: ' + e.message);
+  }
+}
+
+function setDrawingClass(cls) {
+  drawingClass = drawingClass === cls ? null : cls;
+  updateModeIndicator();
+  if (modalOpen) renderModal();
+}
+
+function updateModeIndicator() {
+  const ind = document.getElementById('modal-mode');
+  const cursorLabel = document.getElementById('cursor-label');
+  
+  document.querySelectorAll('.class-btn').forEach(b => b.classList.remove('active'));
+  
+  if (drawingClass) {
+    ind.textContent = `DRAW: ${drawingClass}`;
+    ind.className = 'draw';
+    document.querySelectorAll(`.class-btn[data-class="${drawingClass}"]`).forEach(b => b.classList.add('active'));
+    modalCanvas.style.cursor = 'crosshair';
+    cursorLabel.textContent = drawingClass;
+    cursorLabel.style.background = colors[drawingClass] || '#e94560';
+    cursorLabel.style.color = '#fff';
+    cursorLabel.style.display = 'block';
+  } else {
+    ind.textContent = 'SELECT';
+    ind.className = 'select';
+    modalCanvas.style.cursor = 'default';
+    cursorLabel.style.display = 'none';
+  }
+}
+
+function getImageFolder() {
+  if (hasSplit) {
+    const split = document.getElementById('split-select').value;
+    return `${datasetBase}/${split === 'train' ? trainPath : valPath}`;
+  } else {
+    return `${datasetBase}/${trainPath}`;
+  }
+}
+
+let labelCache = { completed: [] };
+
+async function loadLabelCache() {
+  if (!datasetBase) return;
+  try {
+    const resp = await fetch(`/load_cache?base=${encodeURIComponent(datasetBase)}`);
+    labelCache = await resp.json();
+    
+    // Apply saved settings
+    if (labelCache.settings) {
+      const s = labelCache.settings;
+      if (s.modelPath) {
+        document.getElementById('model-path').value = s.modelPath;
+      }
+      if (s.autoDetect !== undefined) {
+        document.getElementById('auto-detect').checked = s.autoDetect;
+      }
+      if (s.autosaveOnDetect !== undefined) {
+        document.getElementById('autosave-on-detect').checked = s.autosaveOnDetect;
+      }
+      if (s.editInGrid !== undefined) {
+        document.getElementById('edit-in-grid').checked = s.editInGrid;
+        editInGrid = s.editInGrid;
+      }
+      if (s.deselectAfterDraw !== undefined) {
+        document.getElementById('deselect-after-draw').checked = s.deselectAfterDraw;
+      }
+      if (s.enableZoom !== undefined) {
+        document.getElementById('enable-zoom').checked = s.enableZoom;
+      }
+      if (s.zoomSize !== undefined) {
+        document.getElementById('zoom-size').value = s.zoomSize;
+        updateZoomSize();
+      }
+      if (s.regionOpacity !== undefined) {
+        document.getElementById('region-opacity').value = s.regionOpacity;
+        updateOpacity();
+      }
+      if (s.onlyWithRegions !== undefined) {
+        document.getElementById('only-with-regions').checked = s.onlyWithRegions;
+      }
+      if (s.countedClasses && Array.isArray(s.countedClasses)) {
+        countedClasses = new Set(s.countedClasses);
+      }
+      if (s.hiddenTintClasses && Array.isArray(s.hiddenTintClasses)) {
+        hiddenTintClasses = new Set(s.hiddenTintClasses);
+      }
+      if (s.ignoreOverlapClasses && Array.isArray(s.ignoreOverlapClasses)) {
+        ignoreOverlapClasses = new Set(s.ignoreOverlapClasses);
+      }
+      if (s.customColors && typeof s.customColors === 'object') {
+        customColors = s.customColors;
+        for (const [className, color] of Object.entries(customColors)) {
+          if (colors[className]) {
+            colors[className] = color;
+          }
+        }
+      }
+      renderClassButtons();
+      if (s.gridCols) {
+        document.getElementById('grid-cols').value = s.gridCols;
+      }
+      if (s.fullWidthMode !== undefined) {
+        document.getElementById('full-width-mode').checked = s.fullWidthMode;
+      }
+    }
+  } catch (e) {
+    labelCache = { completed: [] };
+  }
+}
+
+async function saveSettings() {
+  if (!datasetBase) return;
+  const settings = {
+    modelPath: document.getElementById('model-path').value,
+    autoDetect: document.getElementById('auto-detect').checked,
+    autosaveOnDetect: document.getElementById('autosave-on-detect').checked,
+    editInGrid: document.getElementById('edit-in-grid').checked,
+    deselectAfterDraw: document.getElementById('deselect-after-draw').checked,
+    enableZoom: document.getElementById('enable-zoom').checked,
+    zoomSize: document.getElementById('zoom-size').value,
+    regionOpacity: document.getElementById('region-opacity').value,
+    onlyWithRegions: document.getElementById('only-with-regions').checked,
+    countedClasses: Array.from(countedClasses),
+    hiddenTintClasses: Array.from(hiddenTintClasses),
+    ignoreOverlapClasses: Array.from(ignoreOverlapClasses),
+    gridCols: document.getElementById('grid-cols').value,
+    fullWidthMode: document.getElementById('full-width-mode').checked,
+    customColors: customColors
+  };
+  try {
+    await fetch('/save_settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ dataset_base: datasetBase, settings })
+    });
+  } catch (e) {
+    console.error('Failed to save settings:', e);
+  }
+}
+
+async function rebuildLabelCache() {
+  if (!datasetBase) return;
+  setStatus('Rebuilding cache...');
+  try {
+    const resp = await fetch(`/rebuild_cache?base=${encodeURIComponent(datasetBase)}&structure=${datasetStructure}`);
+    labelCache = await resp.json();
+    // Update progress with cached data
+    progress.completed = labelCache.completed.filter(p => images.includes(p));
+    updateProgress();
+    renderGrid();
+    setStatus(`Cache rebuilt: ${labelCache.completed.length} labeled images found`);
+  } catch (e) {
+    setStatus('Cache rebuild failed: ' + e.message);
+  }
+}
+
+async function loadImages() {
+  const folder = getImageFolder();
+  const splitLabel = hasSplit ? document.getElementById('split-select').value : 'all';
+  
+  setStatus(`Loading ${splitLabel} images...`);
+  imageCache = {};
+  
+  try {
+    const resp = await fetch(`/folder?path=${encodeURIComponent(folder)}`);
+    const data = await resp.json();
+    allImages = data.images;
+    images = [...allImages];
+    activeFilter = [];
+    updateFilterButton();
+    progress = data.progress;
+    
+    // Merge cached completed with progress (use cache as source of truth)
+    const cachedSet = new Set(labelCache.completed || []);
+    progress.completed = images.filter(p => cachedSet.has(p));
+    
+    if (images.length === 0) {
+      setStatus(`No images found in ${folder}`);
+    } else {
+      selectedIndex = Math.min(progress.current_index || 0, images.length - 1);
+      updateGrid();
+      setStatus(`Loaded ${images.length} ${splitLabel} images (${progress.completed.length} labeled)`);
+    }
+  } catch (e) {
+    setStatus('Failed: ' + e.message);
+  }
+}
+
+async function changeSplit() {
+  if (!datasetBase) return;
+  loadImages();
+}
+
+function updateGrid() {
+  const cols = parseInt(document.getElementById('grid-cols').value) || 4;
+  const rows = parseInt(document.getElementById('grid-rows').value) || 3;
+  const paginate = document.getElementById('paginate-grid').checked;
+  editInGrid = document.getElementById('edit-in-grid').checked;
+  
+  document.getElementById('grid').style.setProperty('--cols', cols);
+  perPage = paginate ? cols * rows : 1000;
+  
+  currentPage = Math.floor(selectedIndex / perPage);
+  updatePagination();
+  renderGrid();
+}
+
+function toggleEditInGrid() {
+  editInGrid = document.getElementById('edit-in-grid').checked;
+  if (!editInGrid) {
+    gridEditIndex = -1;
+    gridEditSelectedIdx = -1;
+  }
+  renderGrid();
+}
+
+function updatePagination() {
+  const totalPages = Math.ceil(images.length / perPage) || 1;
+  document.getElementById('total-pages').textContent = totalPages;
+  document.getElementById('page-input').value = currentPage + 1;
+  document.getElementById('page-input').max = totalPages;
+}
+
+function updateProgress() {
+  const done = progress.completed.length;
+  const total = images.length;
+  const pct = total > 0 ? (done / total * 100) : 0;
+  document.getElementById('progress-fill').style.width = `${pct}%`;
+  document.getElementById('progress-text').textContent = `${done} / ${total} (${pct.toFixed(1)}%)`;
+}
+
+function renderGrid() {
+  stopAnimation();
+  const grid = document.getElementById('grid');
+  grid.innerHTML = '';
+  
+  const start = currentPage * perPage;
+  const end = Math.min(start + perPage, images.length);
+  
+  const cols = parseInt(document.getElementById('grid-cols').value) || 4;
+  const container = document.getElementById('grid-container');
+  const fullWidthMode = document.getElementById('full-width-mode').checked;
+  
+  if (fullWidthMode) {
+    grid.classList.add('full-width-mode');
+    const availableWidth = container.clientWidth - 30;
+    
+    // Group images into rows
+    for (let rowStart = start; rowStart < end; rowStart += cols) {
+      const rowEnd = Math.min(rowStart + cols, end);
+      const rowDiv = document.createElement('div');
+      rowDiv.className = 'grid-row';
+      
+      const rowImages = [];
+      for (let i = rowStart; i < rowEnd; i++) {
+        rowImages.push({ index: i, path: images[i] });
+      }
+      
+      // Calculate width per item (equal distribution initially, adjusted after load)
+      const itemCount = rowImages.length;
+      const gapTotal = (itemCount - 1) * 8;
+      const baseWidth = Math.floor((availableWidth - gapTotal) / itemCount);
+      
+      for (const { index } of rowImages) {
+        const item = createGridItem(index, baseWidth, 0, true);
+        rowDiv.appendChild(item);
+        loadThumbnailFullWidth(index, item, availableWidth, itemCount);
+      }
+      
+      grid.appendChild(rowDiv);
+    }
+  } else {
+    grid.classList.remove('full-width-mode');
+    const cellW = Math.floor((container.clientWidth - 30 - (cols - 1) * 8) / cols);
+    const cellH = Math.round(cellW * 9 / 16);
+    
+    for (let i = start; i < end; i++) {
+      const item = createGridItem(i, cellW, cellH, false);
+      grid.appendChild(item);
+      loadThumbnail(i, item.querySelector('canvas'));
+    }
+  }
+  
+  updateProgress();
+  updateLabelCountsFooter();
+}
+
+function createGridItem(index, w, h, fullWidthMode = false) {
+  const path = images[index];
+  const filename = path.split(/[/\\]/).pop();
+  const isSelected = index === selectedIndex;
+  const isEditing = editInGrid && index === gridEditIndex;
+  const isDone = progress.completed.includes(path);
+  
+  const item = document.createElement('div');
+  item.className = 'grid-item' + (isSelected ? ' selected' : '') + (isEditing ? ' editing' : '');
+  item.dataset.index = index;
+  if (fullWidthMode) item.dataset.fullWidth = 'true';
+  item.onclick = (e) => {
+    if (editInGrid) return;
+    selectItem(index);
+    openModal(index);
+  };
+  
+  // Image wrapper
+  const imageWrapper = document.createElement('div');
+  imageWrapper.className = 'grid-item-image';
+  
+  const canvas = document.createElement('canvas');
+  canvas.className = 'grid-item-canvas';
+  canvas.width = w;
+  canvas.height = h || Math.round(w * 9 / 16);
+  canvas.addEventListener('mousedown', (e) => gridMouseDown(e, index));
+  canvas.addEventListener('mousemove', (e) => { gridMouseMove(e, index); updateZoomWindow(e, index); updateGridCursor(e, index); });
+  canvas.addEventListener('mouseup', (e) => gridMouseUp(e, index));
+  canvas.addEventListener('mouseleave', (e) => hideZoomWindow(e.target));
+  imageWrapper.appendChild(canvas);
+  
+  const mark = document.createElement('div');
+  mark.className = 'grid-item-mark ' + (isDone ? 'done' : 'pending');
+  mark.textContent = isDone ? '✓' : '';
+  imageWrapper.appendChild(mark);
+  
+  item.appendChild(imageWrapper);
+  
+  // Footer with buttons
+  const footer = document.createElement('div');
+  footer.className = 'grid-item-footer';
+  
+  const footerTop = document.createElement('div');
+  footerTop.className = 'grid-item-footer-top';
+  
+  const nameSpan = document.createElement('div');
+  nameSpan.className = 'grid-item-name';
+  nameSpan.textContent = filename;
+  footerTop.appendChild(nameSpan);
+  
+  const buttonsDiv = document.createElement('div');
+  buttonsDiv.className = 'grid-item-buttons';
+  
+  const detectBtn = document.createElement('button');
+  detectBtn.className = 'grid-item-btn detect';
+  detectBtn.textContent = 'Detect';
+  detectBtn.onclick = (e) => {
+    e.stopPropagation();
+    runGridDetection(index);
+  };
+  buttonsDiv.appendChild(detectBtn);
+  
+  const saveBtn = document.createElement('button');
+  saveBtn.className = 'grid-item-btn save';
+  saveBtn.textContent = 'Save';
+  saveBtn.onclick = (e) => {
+    e.stopPropagation();
+    saveGridItem(index);
+  };
+  buttonsDiv.appendChild(saveBtn);
+  
+  footerTop.appendChild(buttonsDiv);
+  footer.appendChild(footerTop);
+  
+  const countsDiv = document.createElement('div');
+  countsDiv.className = 'grid-item-counts';
+  footer.appendChild(countsDiv);
+  
+  item.appendChild(footer);
+  
+  return item;
+}
+
+async function loadThumbnailFullWidth(index, item, availableWidth, itemCount) {
+  const path = images[index];
+  const canvas = item.querySelector('canvas');
+  const ctx = canvas.getContext('2d');
+  
+  if (!imageCache[path]) {
+    imageCache[path] = { img: null, regions: null };
+  }
+  
+  const img = new Image();
+  img.onload = async () => {
+    imageCache[path].img = img;
+    
+    // Calculate size based on actual aspect ratio
+    const aspectRatio = img.width / img.height;
+    const gapTotal = (itemCount - 1) * 8;
+    const baseWidth = Math.floor((availableWidth - gapTotal) / itemCount);
+    const w = baseWidth;
+    const h = Math.round(w / aspectRatio);
+    
+    canvas.width = w;
+    canvas.height = h;
+    item.style.width = w + 'px';
+    
+    ctx.fillStyle = '#0a0a0a';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, w, h);
+    
+    let regions = imageCache[path].regions;
+    if (regions === null) {
+      regions = await fetchLabels(path);
+      if ((!regions || regions.length === 0) && document.getElementById('auto-detect').checked) {
+        const detected = await fetchDetections(path);
+        if (detected && detected.length > 0) {
+          regions = detected;
+          if (document.getElementById('autosave-on-detect').checked) {
+            imageCache[path].regions = regions;
+            scheduleAutoSave(path, regions, true);
+          } else {
+            unsavedDetected.add(path);
+            updateGridItemUnsavedState(index);
+          }
+        }
+      }
+      imageCache[path].regions = regions || [];
+    }
+    
+    drawRegions(ctx, regions || [], 0, 0, w, h, false);
+    
+    updateGridItemCounts(index);
+    if (countedClasses.size > 0) {
+      updateLabelCountsFooter();
+    }
+    
+    if (editInGrid && gridEditIndex === index) {
+      gridEditRegions = JSON.parse(JSON.stringify(regions || []));
+    }
+  };
+  img.src = `/image?path=${encodeURIComponent(path)}`;
+}
+
+async function loadThumbnail(index, canvas) {
+  const path = images[index];
+  const ctx = canvas.getContext('2d');
+  
+  if (!imageCache[path]) {
+    imageCache[path] = { img: null, regions: null };
+  }
+  
+  const img = new Image();
+  img.onload = async () => {
+    imageCache[path].img = img;
+    
+    const scale = Math.min(canvas.width / img.width, canvas.height / img.height);
+    const w = img.width * scale;
+    const h = img.height * scale;
+    const x = (canvas.width - w) / 2;
+    const y = (canvas.height - h) / 2;
+    
+    ctx.fillStyle = '#0a0a0a';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, x, y, w, h);
+    
+    let regions = imageCache[path].regions;
+    if (regions === null) {
+      regions = await fetchLabels(path);
+      // Auto-detect if no labels exist (null) or empty labels
+      if ((!regions || regions.length === 0) && document.getElementById('auto-detect').checked) {
+        const detected = await fetchDetections(path);
+        if (detected && detected.length > 0) {
+          regions = detected;
+          if (document.getElementById('autosave-on-detect').checked) {
+            imageCache[path].regions = regions;
+            scheduleAutoSave(path, regions, true);
+          } else {
+            unsavedDetected.add(path);
+            updateGridItemUnsavedState(index);
+          }
+        }
+      }
+      imageCache[path].regions = regions || [];
+    }
+    
+    drawRegions(ctx, regions || [], x, y, w, h, false);
+    
+    // Update item and page label counts
+    updateGridItemCounts(index);
+    if (countedClasses.size > 0) {
+      updateLabelCountsFooter();
+    }
+    
+    if (editInGrid && gridEditIndex === index) {
+      gridEditRegions = JSON.parse(JSON.stringify(regions || []));
+    }
+  };
+  img.src = `/image?path=${encodeURIComponent(path)}`;
+}
+
+async function fetchLabels(imagePath) {
+  const classesJson = encodeURIComponent(JSON.stringify(classNames));
+  const resp = await fetch(`/labels?path=${encodeURIComponent(imagePath)}&base=${encodeURIComponent(datasetBase)}&structure=${datasetStructure}&classes=${classesJson}`);
+  const data = await resp.json();
+  return data.regions;
+}
+
+async function fetchDetections(imagePath) {
+  const modelPath = document.getElementById('model-path').value.trim();
+  if (!modelPath) return [];
+  
+  const classesJson = encodeURIComponent(JSON.stringify(classNames));
+  const resp = await fetch(`/detect?path=${encodeURIComponent(imagePath)}&model=${encodeURIComponent(modelPath)}&classes=${classesJson}`);
+  return await resp.json();
+}
+
+function isUnknownClass(className) {
+  return !Object.values(classNames).includes(className) || className.startsWith('unknown_');
+}
+
+function findOverlaps(regions) {
+  const overlapping = new Set();
+  for (let i = 0; i < regions.length; i++) {
+    for (let j = i + 1; j < regions.length; j++) {
+      const a = regions[i], b = regions[j];
+      if (ignoreOverlapClasses.has(a.class) || ignoreOverlapClasses.has(b.class)) continue;
+      const ax1 = a.box[0] - a.box[2]/2, ax2 = a.box[0] + a.box[2]/2;
+      const ay1 = a.box[1] - a.box[3]/2, ay2 = a.box[1] + a.box[3]/2;
+      const bx1 = b.box[0] - b.box[2]/2, bx2 = b.box[0] + b.box[2]/2;
+      const by1 = b.box[1] - b.box[3]/2, by2 = b.box[1] + b.box[3]/2;
+      if (ax1 < bx2 && ax2 > bx1 && ay1 < by2 && ay2 > by1) {
+        overlapping.add(i);
+        overlapping.add(j);
+      }
+    }
+  }
+  return overlapping;
+}
+
+function findTouchingEdges(regions, iw, ih) {
+  // Returns map: regionIndex -> [{edge: 'left'|'right'|'top'|'bottom', otherIdx, otherClass}]
+  const touching = new Map();
+  const threshold = 1.5; // pixels
+  const threshX = threshold / iw;
+  const threshY = threshold / ih;
+  
+  for (let i = 0; i < regions.length; i++) {
+    for (let j = i + 1; j < regions.length; j++) {
+      const a = regions[i], b = regions[j];
+      const ax1 = a.box[0] - a.box[2]/2, ax2 = a.box[0] + a.box[2]/2;
+      const ay1 = a.box[1] - a.box[3]/2, ay2 = a.box[1] + a.box[3]/2;
+      const bx1 = b.box[0] - b.box[2]/2, bx2 = b.box[0] + b.box[2]/2;
+      const by1 = b.box[1] - b.box[3]/2, by2 = b.box[1] + b.box[3]/2;
+      
+      // Check if they overlap - skip if overlapping
+      if (ax1 < bx2 && ax2 > bx1 && ay1 < by2 && ay2 > by1) continue;
+      
+      // Check vertical alignment (y ranges overlap)
+      const vOverlap = ay1 < by2 && ay2 > by1;
+      // Check horizontal alignment (x ranges overlap)  
+      const hOverlap = ax1 < bx2 && ax2 > bx1;
+      
+      if (vOverlap) {
+        // a's right edge near b's left edge
+        if (Math.abs(ax2 - bx1) <= threshX) {
+          if (!touching.has(i)) touching.set(i, []);
+          if (!touching.has(j)) touching.set(j, []);
+          touching.get(i).push({edge: 'right', otherIdx: j, otherClass: b.class});
+          touching.get(j).push({edge: 'left', otherIdx: i, otherClass: a.class});
+        }
+        // a's left edge near b's right edge
+        if (Math.abs(ax1 - bx2) <= threshX) {
+          if (!touching.has(i)) touching.set(i, []);
+          if (!touching.has(j)) touching.set(j, []);
+          touching.get(i).push({edge: 'left', otherIdx: j, otherClass: b.class});
+          touching.get(j).push({edge: 'right', otherIdx: i, otherClass: a.class});
+        }
+      }
+      
+      if (hOverlap) {
+        // a's bottom edge near b's top edge
+        if (Math.abs(ay2 - by1) <= threshY) {
+          if (!touching.has(i)) touching.set(i, []);
+          if (!touching.has(j)) touching.set(j, []);
+          touching.get(i).push({edge: 'bottom', otherIdx: j, otherClass: b.class});
+          touching.get(j).push({edge: 'top', otherIdx: i, otherClass: a.class});
+        }
+        // a's top edge near b's bottom edge
+        if (Math.abs(ay1 - by2) <= threshY) {
+          if (!touching.has(i)) touching.set(i, []);
+          if (!touching.has(j)) touching.set(j, []);
+          touching.get(i).push({edge: 'top', otherIdx: j, otherClass: b.class});
+          touching.get(j).push({edge: 'bottom', otherIdx: i, otherClass: a.class});
+        }
+      }
+    }
+  }
+  return touching;
+}
+
+function findBoundaryEdges(regions) {
+  // Returns map: regionIndex -> [{edge: 'left'|'right'|'top'|'bottom', type: 'touching'|'outside'}]
+  const boundary = new Map();
+  const threshold = 0.002; // ~1px in normalized coords
+  
+  for (let i = 0; i < regions.length; i++) {
+    const r = regions[i];
+    const x1 = r.box[0] - r.box[2]/2, x2 = r.box[0] + r.box[2]/2;
+    const y1 = r.box[1] - r.box[3]/2, y2 = r.box[1] + r.box[3]/2;
+    const edges = [];
+    
+    // Left edge
+    if (x1 < 0) edges.push({edge: 'left', type: 'outside'});
+    else if (x1 <= threshold) edges.push({edge: 'left', type: 'touching'});
+    
+    // Right edge
+    if (x2 > 1) edges.push({edge: 'right', type: 'outside'});
+    else if (x2 >= 1 - threshold) edges.push({edge: 'right', type: 'touching'});
+    
+    // Top edge
+    if (y1 < 0) edges.push({edge: 'top', type: 'outside'});
+    else if (y1 <= threshold) edges.push({edge: 'top', type: 'touching'});
+    
+    // Bottom edge
+    if (y2 > 1) edges.push({edge: 'bottom', type: 'outside'});
+    else if (y2 >= 1 - threshold) edges.push({edge: 'bottom', type: 'touching'});
+    
+    if (edges.length > 0) boundary.set(i, edges);
+  }
+  return boundary;
+}
+
+function drawAnimatedEdge(ctx, rx, ry, rw, rh, edge, baseColor, lineScale, isError = false) {
+  let x1, y1, x2, y2;
+  if (edge === 'left') { x1 = rx; y1 = ry; x2 = rx; y2 = ry + rh; }
+  else if (edge === 'right') { x1 = rx + rw; y1 = ry; x2 = rx + rw; y2 = ry + rh; }
+  else if (edge === 'top') { x1 = rx; y1 = ry; x2 = rx + rw; y2 = ry; }
+  else { x1 = rx; y1 = ry + rh; x2 = rx + rw; y2 = ry + rh; }
+  
+  const flash = Math.sin(animationPhase) > 0.3;
+  
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.lineCap = 'square';
+  ctx.lineWidth = 1 / lineScale;
+  ctx.strokeStyle = flash ? '#ffffff' : baseColor;
+  ctx.stroke();
+}
+
+function lerpColor(color1, color2, t) {
+  // Parse hex colors
+  const c1 = hexToRgb(color1);
+  const c2 = hexToRgb(color2);
+  if (!c1 || !c2) return color1;
+  
+  const r = Math.round(c1.r + (c2.r - c1.r) * t);
+  const g = Math.round(c1.g + (c2.g - c1.g) * t);
+  const b = Math.round(c1.b + (c2.b - c1.b) * t);
+  return `rgb(${r},${g},${b})`;
+}
+
+function hexToRgb(hex) {
+  if (hex.startsWith('rgb')) {
+    const m = hex.match(/(\d+),\s*(\d+),\s*(\d+)/);
+    if (m) return { r: parseInt(m[1]), g: parseInt(m[2]), b: parseInt(m[3]) };
+  }
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result ? {
+    r: parseInt(result[1], 16),
+    g: parseInt(result[2], 16),
+    b: parseInt(result[3], 16)
+  } : null;
+}
+
+function startAnimation() {
+  if (animationRunning) return;
+  animationRunning = true;
+  
+  function animate() {
+    if (!animationRunning) return;
+    animationPhase = (animationPhase + 0.08) % (Math.PI * 2);
+    
+    // Redraw current view
+    if (modalOpen) {
+      renderModalCanvas();
+    } else {
+      redrawVisibleGridItems();
+    }
+    requestAnimationFrame(animate);
+  }
+  requestAnimationFrame(animate);
+}
+
+function stopAnimation() {
+  animationRunning = false;
+}
+
+function redrawVisibleGridItems() {
+  const grid = document.getElementById('grid');
+  const items = grid.querySelectorAll('.grid-item');
+  items.forEach(item => {
+    const idx = parseInt(item.dataset.index);
+    if (!isNaN(idx)) redrawGridCanvas(idx);
+  });
+  
+  // Redraw zoom window if visible
+  if (lastZoomEvent && lastZoomIndex >= 0 && zoomWindow.style.display === 'block') {
+    updateZoomWindow(lastZoomEvent, lastZoomIndex);
+  }
+}
+
+function renderModalCanvas() {
+  if (!modalOpen || modalIndex < 0) return;
+  const path = images[modalIndex];
+  if (!modalImg) return;
+  
+  const canvas = document.getElementById('modal-canvas');
+  const ctx = canvas.getContext('2d');
+  
+  // Calculate dimensions maintaining aspect ratio
+  const maxW = canvas.parentElement.clientWidth - 40;
+  const maxH = window.innerHeight - 200;
+  let w = modalImg.width, h = modalImg.height;
+  if (w > maxW) { h = h * maxW / w; w = maxW; }
+  if (h > maxH) { w = w * maxH / h; h = maxH; }
+  
+  canvas.width = w;
+  canvas.height = h;
+  ctx.drawImage(modalImg, 0, 0, w, h);
+  
+  drawRegions(ctx, modalRegions, 0, 0, w, h, true, modalSelectedIdx);
+  
+  // Refresh zoom window if visible
+  if (lastZoomEvent && zoomWindow.style.display === 'block') {
+    updateModalZoomWindow(lastZoomEvent);
+  }
+}
+
+function drawRegions(ctx, regions, ox, oy, iw, ih, showHandles, selectedIdx = -1, lineScale = 1) {
+  const overlaps = findOverlaps(regions);
+  const touchingEdges = findTouchingEdges(regions, iw, ih);
+  const boundaryEdges = findBoundaryEdges(regions);
+  
+  // Track if this draw has animated elements
+  if (touchingEdges.size > 0 || boundaryEdges.size > 0 || overlaps.size > 0) {
+    if (!animationRunning) startAnimation();
+  }
+  
+  // Breathing opacity for overlaps (subtle pulse between 0.3 and 0.55)
+  const breathe = 0.5 + 0.5 * Math.sin(animationPhase);
+  const overlapPulse = 0.3 + 0.25 * breathe;
+  
+  regions.forEach((r, i) => {
+    const unknown = isUnknownClass(r.class);
+    const hasOverlap = overlaps.has(i);
+    const color = unknown ? '#000' : (colors[r.class] || '#888');
+    
+    const rx = ox + (r.box[0] - r.box[2]/2) * iw;
+    const ry = oy + (r.box[1] - r.box[3]/2) * ih;
+    const rw = r.box[2] * iw;
+    const rh = r.box[3] * ih;
+    
+    // Fill (skip if tint hidden for this class)
+    const showTint = !hiddenTintClasses.has(r.class);
+    if (showTint) {
+      ctx.globalAlpha = regionOpacity;
+      ctx.fillStyle = color;
+      ctx.fillRect(rx, ry, rw, rh);
+      ctx.globalAlpha = 1;
+    }
+    
+    // Random stripes for all regions (angle based on box position for consistency)
+    // Skip stripes if tint hidden (unless unknown or overlapping)
+    if (showTint || unknown || hasOverlap) {
+      // Use region index for consistent angle (doesn't change during move/resize)
+      const angle = (i % 4) * 45 + 22.5; // 22.5, 67.5, 112.5, or 157.5 degrees
+      const radians = angle * Math.PI / 180;
+      const stripeColor = unknown ? 'rgba(255,0,0,0.6)' : (hasOverlap ? `rgba(255,255,255,${overlapPulse})` : 'rgba(255,255,255,0.15)');
+      const stripeWidth = (unknown ? 3 : (hasOverlap ? 2 : 1)) / lineScale;
+      const stripeSpacing = (unknown ? 6 : (hasOverlap ? 7 : 8)) / lineScale;
+      
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(rx, ry, rw, rh);
+      ctx.clip();
+      ctx.strokeStyle = stripeColor;
+      ctx.lineWidth = stripeWidth;
+      
+      const diag = Math.sqrt(rw*rw + rh*rh);
+      const cos = Math.cos(radians);
+      const sin = Math.sin(radians);
+      const cx = rx + rw/2;
+      const cy = ry + rh/2;
+      
+      for (let d = -diag; d < diag; d += stripeSpacing) {
+        const x1 = cx + d * cos - diag * sin;
+        const y1 = cy + d * sin + diag * cos;
+        const x2 = cx + d * cos + diag * sin;
+        const y2 = cy + d * sin - diag * cos;
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(x2, y2);
+        ctx.stroke();
+      }
+      ctx.restore();
+      
+      // Extra cross-hatch for unknown regions
+      if (unknown) {
+        const angle2 = angle + 90;
+        const radians2 = angle2 * Math.PI / 180;
+        const cos2 = Math.cos(radians2);
+        const sin2 = Math.sin(radians2);
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(rx, ry, rw, rh);
+        ctx.clip();
+        ctx.strokeStyle = 'rgba(255,0,0,0.6)';
+        ctx.lineWidth = stripeWidth;
+        for (let d = -diag; d < diag; d += stripeSpacing) {
+          ctx.beginPath();
+          ctx.moveTo(cx + d * cos2 - diag * sin2, cy + d * sin2 + diag * cos2);
+          ctx.lineTo(cx + d * cos2 + diag * sin2, cy + d * sin2 - diag * cos2);
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+    }
+    
+    // Border
+    ctx.strokeStyle = unknown ? '#ff0000' : (hasOverlap ? '#ffffff' : color);
+    ctx.lineWidth = (i === selectedIdx ? 2.5 : (unknown ? 2 : (hasOverlap ? 1.5 : 1))) / lineScale;
+    ctx.strokeRect(rx, ry, rw, rh);
+    
+    // Touching edges highlight - animated border transition to white
+    const edges = touchingEdges.get(i);
+    if (edges && edges.length > 0) {
+      edges.forEach(({edge, otherClass}) => {
+        drawAnimatedEdge(ctx, rx, ry, rw, rh, edge, color, lineScale, false);
+      });
+    }
+    
+    // Boundary edges - animated border (red for outside, yellow for touching boundary)
+    const bEdges = boundaryEdges.get(i);
+    if (bEdges && bEdges.length > 0) {
+      bEdges.forEach(({edge, type}) => {
+        const warnColor = type === 'outside' ? '#ff0000' : '#ffcc00';
+        drawAnimatedEdge(ctx, rx, ry, rw, rh, edge, warnColor, lineScale, type === 'outside');
+      });
+    }
+    
+    // Label
+    const label = unknown ? '???' : r.class;
+    const isSelected = i === selectedIdx;
+    
+    if (isSelected) {
+      ctx.font = 'bold 12px system-ui';
+      const labelW = ctx.measureText(label).width + 8;
+      const labelH = 16;
+      let labelX = rx + rw + 4;
+      let labelY = ry;
+      
+      // Smart positioning for selected label (keep within bounds)
+      if (labelX + labelW > ox + iw) {
+        labelX = rx - labelW - 4;
+      }
+
+      ctx.fillStyle = unknown ? '#ff0000' : (colors[r.class] || '#e94560');
+      ctx.fillRect(labelX, labelY, labelW, labelH);
+      ctx.fillStyle = '#fff';
+      ctx.fillText(label, labelX + 4, labelY + 12);
+    } else {
+      ctx.font = '9px system-ui';
+      const labelW = ctx.measureText(label).width + 4;
+      const labelH = 11;
+
+      let lx = rx;
+      let ly = ry;
+
+      // If region is small, draw label outside to avoid covering it
+      if (rh < 20 || rw < 20) {
+        ly = ry - labelH;
+        // If outside top, move to bottom
+        if (ly < oy) {
+          ly = ry + rh;
+        }
+      }
+
+      ctx.fillStyle = unknown ? 'rgba(255,0,0,0.9)' : (hasOverlap ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.8)');
+      ctx.fillRect(lx, ly, labelW, labelH);
+      ctx.fillStyle = hasOverlap ? '#000' : '#fff';
+      ctx.fillText(label, lx + 2, ly + 9);
+    }
+    
+    // Handles for selected
+    if (showHandles && i === selectedIdx) {
+      const hs = HANDLE_SIZE / lineScale;
+      ctx.fillStyle = '#fff';
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 1 / lineScale;
+      [[rx, ry], [rx+rw, ry], [rx, ry+rh], [rx+rw, ry+rh],
+       [rx+rw/2, ry], [rx+rw/2, ry+rh], [rx, ry+rh/2], [rx+rw, ry+rh/2]].forEach(([hx, hy]) => {
+        ctx.fillRect(hx - hs/2, hy - hs/2, hs, hs);
+        ctx.strokeRect(hx - hs/2, hy - hs/2, hs, hs);
+      });
+    }
+  });
+}
+
+function selectItem(index) {
+  selectedIndex = index;
+  progress.current_index = index;
+  const newPage = Math.floor(index / perPage);
+  if (newPage !== currentPage) {
+    currentPage = newPage;
+    updatePagination();
+    renderGrid();
+  } else {
+    document.querySelectorAll('.grid-item').forEach(item => {
+      item.classList.toggle('selected', parseInt(item.dataset.index) === selectedIndex);
+    });
+  }
+}
+
+// Grid editing
+function getGridHandleAtPoint(mx, my, r, coords) {
+  const rx = coords.x + (r.box[0] - r.box[2]/2) * coords.w;
+  const ry = coords.y + (r.box[1] - r.box[3]/2) * coords.h;
+  const rw = r.box[2] * coords.w;
+  const rh = r.box[3] * coords.h;
+  const hs = 6;
+  
+  const handles = [
+    { x: rx, y: ry, mode: 'nw' },
+    { x: rx + rw, y: ry, mode: 'ne' },
+    { x: rx, y: ry + rh, mode: 'sw' },
+    { x: rx + rw, y: ry + rh, mode: 'se' },
+    { x: rx + rw/2, y: ry, mode: 'n' },
+    { x: rx + rw/2, y: ry + rh, mode: 's' },
+    { x: rx, y: ry + rh/2, mode: 'w' },
+    { x: rx + rw, y: ry + rh/2, mode: 'e' },
+  ];
+  
+  for (const h of handles) {
+    if (Math.abs(mx - h.x) <= hs && Math.abs(my - h.y) <= hs) {
+      return h.mode;
+    }
+  }
+  return null;
+}
+
+function gridMouseDown(e, index) {
+  if (!editInGrid) return;
+  
+  if (gridEditIndex !== index) {
+    gridEditIndex = index;
+    const path = images[index];
+    gridEditRegions = imageCache[path]?.regions ? JSON.parse(JSON.stringify(imageCache[path].regions)) : [];
+    gridEditSelectedIdx = -1;
+    selectItem(index);
+    document.querySelectorAll('.grid-item').forEach(i => i.classList.remove('editing'));
+    document.querySelector(`.grid-item[data-index="${index}"]`)?.classList.add('editing');
+  }
+  
+  const canvas = e.target;
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  
+  if (drawingClass) {
+    gridEditDrawing = true;
+    gridEditStart = { x: mx, y: my };
+    gridEditCurrent = { x: mx, y: my };
+    return;
+  }
+  
+  const coords = getCanvasCoords(canvas, index);
+  if (!coords) return;
+  
+  // Check handles on selected region first
+  if (gridEditSelectedIdx >= 0) {
+    const handle = getGridHandleAtPoint(mx, my, gridEditRegions[gridEditSelectedIdx], coords);
+    if (handle) {
+      gridDragMode = handle;
+      gridDragStart = { x: mx, y: my };
+      gridDragRegion = { ...gridEditRegions[gridEditSelectedIdx], box: [...gridEditRegions[gridEditSelectedIdx].box] };
+      return;
+    }
+  }
+  
+  // Find clicked region
+  for (let i = gridEditRegions.length - 1; i >= 0; i--) {
+    const r = gridEditRegions[i];
+    const rx = coords.x + (r.box[0] - r.box[2]/2) * coords.w;
+    const ry = coords.y + (r.box[1] - r.box[3]/2) * coords.h;
+    const rw = r.box[2] * coords.w;
+    const rh = r.box[3] * coords.h;
+    if (mx >= rx && mx <= rx + rw && my >= ry && my <= ry + rh) {
+      gridEditSelectedIdx = i;
+      gridDragMode = 'move';
+      gridDragStart = { x: mx, y: my };
+      gridDragRegion = { ...gridEditRegions[i], box: [...gridEditRegions[i].box] };
+      gridCloneMode = e.ctrlKey;
+      redrawGridCanvas(index);
+      refreshZoomWindow();
+      return;
+    }
+  }
+  gridEditSelectedIdx = -1;
+  redrawGridCanvas(index);
+  refreshZoomWindow();
+}
+
+function gridMouseMove(e, index) {
+  if (!editInGrid || gridEditIndex !== index) return;
+  
+  const canvas = e.target;
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  
+  if (gridEditDrawing && drawingClass) {
+    gridEditCurrent = { x: mx, y: my };
+    redrawGridCanvas(index);
+    return;
+  }
+  
+  if (gridDragMode && gridEditSelectedIdx >= 0) {
+    const coords = getCanvasCoords(canvas, index);
+    if (!coords) return;
+    
+    let dx = (mx - gridDragStart.x) / coords.w;
+    let dy = (my - gridDragStart.y) / coords.h;
+    const r = gridEditRegions[gridEditSelectedIdx];
+    const orig = gridDragRegion.box;
+    
+    // Axis lock with Shift key
+    if (e.shiftKey && gridDragMode === 'move') {
+      if (!gridAxisLock && (Math.abs(dx) > 0.01 || Math.abs(dy) > 0.01)) {
+        gridAxisLock = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v';
+      }
+      if (gridAxisLock === 'h') dy = 0;
+      if (gridAxisLock === 'v') dx = 0;
+    } else if (!e.shiftKey) {
+      gridAxisLock = null;
+    }
+    
+    if (gridDragMode === 'move') {
+      if (gridCloneMode) {
+        // Clone mode: original stays in place, show preview of clone
+        gridClonePreview = {
+          class: r.class,
+          box: [orig[0] + dx, orig[1] + dy, orig[2], orig[3]]
+        };
+      } else {
+        r.box[0] = orig[0] + dx;
+        r.box[1] = orig[1] + dy;
+        gridClonePreview = null;
+      }
+    } else {
+      let x1 = orig[0] - orig[2]/2;
+      let y1 = orig[1] - orig[3]/2;
+      let x2 = orig[0] + orig[2]/2;
+      let y2 = orig[1] + orig[3]/2;
+      
+      if (gridDragMode.includes('w')) x1 += dx;
+      if (gridDragMode.includes('e')) x2 += dx;
+      if (gridDragMode.includes('n')) y1 += dy;
+      if (gridDragMode.includes('s')) y2 += dy;
+      
+      if (x2 - x1 < 0.02) x2 = x1 + 0.02;
+      if (y2 - y1 < 0.02) y2 = y1 + 0.02;
+      
+      r.box[0] = (x1 + x2) / 2;
+      r.box[1] = (y1 + y2) / 2;
+      r.box[2] = x2 - x1;
+      r.box[3] = y2 - y1;
+      gridClonePreview = null;
+    }
+    
+    if (!gridCloneMode) {
+      const path = images[index];
+      imageCache[path].regions = JSON.parse(JSON.stringify(gridEditRegions));
+      scheduleAutoSave(path, gridEditRegions);
+    }
+    redrawGridCanvas(index);
+  }
+}
+
+function gridMouseUp(e, index) {
+  if (!editInGrid || gridEditIndex !== index) return;
+  
+  if (gridEditDrawing && drawingClass) {
+    const canvas = e.target;
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const coords = getCanvasCoords(canvas, index);
+    
+    if (coords) {
+      const x1 = Math.min(gridEditStart.x, mx);
+      const y1 = Math.min(gridEditStart.y, my);
+      const w = Math.abs(mx - gridEditStart.x);
+      const h = Math.abs(my - gridEditStart.y);
+      
+      if (w > 5 && h > 5) {
+        const cx = (x1 + w/2 - coords.x) / coords.w;
+        const cy = (y1 + h/2 - coords.y) / coords.h;
+        const bw = w / coords.w;
+        const bh = h / coords.h;
+        
+        const classId = Object.entries(classNames).find(([k, v]) => v === drawingClass)?.[0];
+        gridEditRegions.push({
+          class: drawingClass,
+          class_id: classId ? parseInt(classId) : -1,
+          box: [cx, cy, bw, bh]
+        });
+        gridEditSelectedIdx = gridEditRegions.length - 1;
+        
+        const path = images[index];
+        imageCache[path].regions = JSON.parse(JSON.stringify(gridEditRegions));
+        scheduleAutoSave(path, gridEditRegions);
+        
+        if (document.getElementById('deselect-after-draw').checked) {
+          drawingClass = null;
+          updateModeIndicator();
+        }
+      }
+    }
+    
+    gridEditDrawing = false;
+    redrawGridCanvas(index);
+  }
+  
+  // Handle clone on Ctrl+drag
+  if (gridCloneMode && gridDragMode === 'move' && gridClonePreview) {
+    const r = gridEditRegions[gridEditSelectedIdx];
+    // Create clone at preview position
+    const cloned = {
+      class: r.class,
+      class_id: r.class_id,
+      box: [...gridClonePreview.box]
+    };
+    gridEditRegions.push(cloned);
+    gridEditSelectedIdx = gridEditRegions.length - 1;
+    const path = images[index];
+    imageCache[path].regions = JSON.parse(JSON.stringify(gridEditRegions));
+    scheduleAutoSave(path, gridEditRegions);
+    redrawGridCanvas(index);
+  }
+  
+  gridDragMode = null;
+  gridDragRegion = null;
+  gridCloneMode = false;
+  gridClonePreview = null;
+  gridAxisLock = null;
+}
+
+function getCanvasCoords(canvas, index) {
+  const path = images[index];
+  const cached = imageCache[path];
+  if (!cached?.img) return null;
+  
+  const img = cached.img;
+  const item = canvas.closest('.grid-item');
+  const isFullWidth = item?.dataset.fullWidth === 'true';
+  
+  if (isFullWidth) {
+    // In full-width mode, image fills canvas entirely
+    return { x: 0, y: 0, w: canvas.width, h: canvas.height };
+  }
+  
+  const scale = Math.min(canvas.width / img.width, canvas.height / img.height);
+  const w = img.width * scale;
+  const h = img.height * scale;
+  const x = (canvas.width - w) / 2;
+  const y = (canvas.height - h) / 2;
+  return { x, y, w, h };
+}
+
+function redrawGridCanvas(index) {
+  const item = document.querySelector(`.grid-item[data-index="${index}"]`);
+  if (!item) return;
+  
+  const canvas = item.querySelector('canvas');
+  const ctx = canvas.getContext('2d');
+  const path = images[index];
+  const cached = imageCache[path];
+  if (!cached?.img) return;
+  
+  const coords = getCanvasCoords(canvas, index);
+  if (!coords) return;
+  
+  ctx.fillStyle = '#0a0a0a';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(cached.img, coords.x, coords.y, coords.w, coords.h);
+  
+  // Use correct regions based on whether this item is being edited
+  const isEditing = editInGrid && gridEditIndex === index;
+  const regions = isEditing ? gridEditRegions : (cached.regions || []);
+  const selectedIdx = isEditing ? gridEditSelectedIdx : -1;
+  drawRegions(ctx, regions, coords.x, coords.y, coords.w, coords.h, isEditing, selectedIdx);
+  
+  // Draw clone preview (only for edited item)
+  if (isEditing && gridClonePreview) {
+    const p = gridClonePreview;
+    const rx = coords.x + (p.box[0] - p.box[2]/2) * coords.w;
+    const ry = coords.y + (p.box[1] - p.box[3]/2) * coords.h;
+    const rw = p.box[2] * coords.w;
+    const rh = p.box[3] * coords.h;
+    ctx.strokeStyle = colors[p.class] || '#fff';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 4]);
+    ctx.strokeRect(rx, ry, rw, rh);
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 0.3;
+    ctx.fillStyle = colors[p.class] || '#888';
+    ctx.fillRect(rx, ry, rw, rh);
+    ctx.globalAlpha = 1;
+  }
+  
+  // Draw in-progress rect (only for edited item)
+  if (isEditing && gridEditDrawing && drawingClass) {
+    const x = Math.min(gridEditStart.x, gridEditCurrent.x);
+    const y = Math.min(gridEditStart.y, gridEditCurrent.y);
+    const w = Math.abs(gridEditCurrent.x - gridEditStart.x);
+    const h = Math.abs(gridEditCurrent.y - gridEditStart.y);
+    ctx.strokeStyle = colors[drawingClass] || '#fff';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 4]);
+    ctx.strokeRect(x, y, w, h);
+    ctx.setLineDash([]);
+  }
+}
+
+function redrawAllGridCanvases() {
+  const start = currentPage * perPage;
+  const end = Math.min(start + perPage, images.length);
+  for (let i = start; i < end; i++) {
+    redrawGridCanvas(i);
+  }
+}
+
+// Zoom window
+const zoomWindow = document.getElementById('zoom-window');
+const zoomCanvas = zoomWindow.querySelector('canvas');
+const zoomCtx = zoomCanvas.getContext('2d');
+const ZOOM_FACTOR = 3;
+let ZOOM_SIZE = 220;
+let lastZoomEvent = null;
+let lastZoomIndex = -1;
+
+function refreshZoomWindow() {
+  if (!isZoomEnabled()) return;
+  if (modalOpen && lastZoomEvent) {
+    updateModalZoomWindow(lastZoomEvent);
+  } else if (lastZoomEvent && lastZoomIndex >= 0) {
+    updateZoomWindow(lastZoomEvent, lastZoomIndex);
+  }
+}
+
+function updateZoomSize() {
+  ZOOM_SIZE = parseInt(document.getElementById('zoom-size').value) || 180;
+  zoomWindow.style.width = ZOOM_SIZE + 'px';
+  zoomWindow.style.height = ZOOM_SIZE + 'px';
+  zoomCanvas.width = ZOOM_SIZE;
+  zoomCanvas.height = ZOOM_SIZE;
+}
+
+function isZoomEnabled() {
+  return document.getElementById('enable-zoom').checked;
+}
+
+function updateZoomWindow(e, index) {
+  lastZoomEvent = e;
+  lastZoomIndex = index;
+  
+  if (!isZoomEnabled() || (!editInGrid && !drawingClass)) {
+    hideZoomWindow(e.target);
+    return;
+  }
+  
+  const path = images[index];
+  const cached = imageCache[path];
+  if (!cached?.img) {
+    hideZoomWindow(e.target);
+    return;
+  }
+  
+  const canvas = e.target;
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const coords = getCanvasCoords(canvas, index);
+  if (!coords) return;
+  
+  // Position zoom window at cursor
+  zoomWindow.style.left = e.clientX + 'px';
+  zoomWindow.style.top = e.clientY + 'px';
+  zoomWindow.style.display = 'block';
+  canvas.style.cursor = 'none';
+  
+  // Calculate source region (in canvas coordinates)
+  const srcSize = ZOOM_SIZE / ZOOM_FACTOR;
+  const srcX = mx - srcSize / 2;
+  const srcY = my - srcSize / 2;
+  
+  // Clear and draw zoomed image
+  zoomCtx.fillStyle = '#0a0a0a';
+  zoomCtx.fillRect(0, 0, ZOOM_SIZE, ZOOM_SIZE);
+  
+  // Draw the zoomed portion
+  zoomCtx.save();
+  zoomCtx.scale(ZOOM_FACTOR, ZOOM_FACTOR);
+  zoomCtx.translate(-srcX, -srcY);
+  
+  // Draw background
+  zoomCtx.fillStyle = '#0a0a0a';
+  zoomCtx.fillRect(0, 0, canvas.width, canvas.height);
+  
+  // Draw image
+  zoomCtx.drawImage(cached.img, coords.x, coords.y, coords.w, coords.h);
+  
+  // Draw regions
+  const regions = editInGrid && gridEditIndex === index ? gridEditRegions : (cached.regions || []);
+  const selectedIdx = editInGrid && gridEditIndex === index ? gridEditSelectedIdx : -1;
+  drawRegions(zoomCtx, regions, coords.x, coords.y, coords.w, coords.h, selectedIdx >= 0, selectedIdx, ZOOM_FACTOR);
+  
+  // Draw in-progress drawing rect
+  if (gridEditDrawing && drawingClass && gridEditIndex === index) {
+    const x = Math.min(gridEditStart.x, gridEditCurrent.x);
+    const y = Math.min(gridEditStart.y, gridEditCurrent.y);
+    const w = Math.abs(gridEditCurrent.x - gridEditStart.x);
+    const h = Math.abs(gridEditCurrent.y - gridEditStart.y);
+    zoomCtx.strokeStyle = colors[drawingClass] || '#fff';
+    zoomCtx.lineWidth = 1 / ZOOM_FACTOR;
+    zoomCtx.setLineDash([2 / ZOOM_FACTOR, 2 / ZOOM_FACTOR]);
+    zoomCtx.strokeRect(x, y, w, h);
+    zoomCtx.setLineDash([]);
+  }
+  
+  // Draw clone preview
+  if (gridClonePreview && gridEditIndex === index) {
+    const p = gridClonePreview;
+    const rx = coords.x + (p.box[0] - p.box[2]/2) * coords.w;
+    const ry = coords.y + (p.box[1] - p.box[3]/2) * coords.h;
+    const rw = p.box[2] * coords.w;
+    const rh = p.box[3] * coords.h;
+    zoomCtx.strokeStyle = colors[p.class] || '#fff';
+    zoomCtx.lineWidth = 1 / ZOOM_FACTOR;
+    zoomCtx.setLineDash([2 / ZOOM_FACTOR, 2 / ZOOM_FACTOR]);
+    zoomCtx.strokeRect(rx, ry, rw, rh);
+    zoomCtx.setLineDash([]);
+    zoomCtx.globalAlpha = 0.3;
+    zoomCtx.fillStyle = colors[p.class] || '#888';
+    zoomCtx.fillRect(rx, ry, rw, rh);
+    zoomCtx.globalAlpha = 1;
+  }
+  
+  zoomCtx.restore();
+}
+
+function hideZoomWindow(canvas) {
+  zoomWindow.style.display = 'none';
+  if (canvas) canvas.style.cursor = '';
+}
+
+function updateModalZoomWindow(e) {
+  lastZoomEvent = e;
+  lastZoomIndex = -1; // Modal mode
+  
+  if (!isZoomEnabled() || (!drawingClass && modalSelectedIdx < 0)) {
+    hideZoomWindow(modalCanvas);
+    return;
+  }
+  
+  if (!modalImg) {
+    hideZoomWindow(modalCanvas);
+    return;
+  }
+  
+  const rect = modalCanvas.getBoundingClientRect();
+  const sx = modalCanvas.width / rect.width;
+  const sy = modalCanvas.height / rect.height;
+  const mx = (e.clientX - rect.left) * sx;
+  const my = (e.clientY - rect.top) * sy;
+  
+  // Position zoom window at cursor
+  zoomWindow.style.left = e.clientX + 'px';
+  zoomWindow.style.top = e.clientY + 'px';
+  zoomWindow.style.display = 'block';
+  modalCanvas.style.cursor = 'none';
+  
+  // Calculate source region
+  const srcSize = ZOOM_SIZE / ZOOM_FACTOR;
+  const srcX = mx - srcSize / 2;
+  const srcY = my - srcSize / 2;
+  
+  // Clear and draw zoomed image
+  zoomCtx.fillStyle = '#0a0a0a';
+  zoomCtx.fillRect(0, 0, ZOOM_SIZE, ZOOM_SIZE);
+  
+  zoomCtx.save();
+  zoomCtx.scale(ZOOM_FACTOR, ZOOM_FACTOR);
+  zoomCtx.translate(-srcX, -srcY);
+  
+  // Draw image
+  zoomCtx.drawImage(modalImg, 0, 0);
+  
+  // Draw regions
+  drawRegions(zoomCtx, modalRegions, 0, 0, modalCanvas.width, modalCanvas.height, modalSelectedIdx >= 0, modalSelectedIdx, ZOOM_FACTOR);
+  
+  // Draw in-progress drawing rect
+  if (modalDrawing && drawingClass) {
+    const x = Math.min(modalStart.x, modalCurrent.x);
+    const y = Math.min(modalStart.y, modalCurrent.y);
+    const w = Math.abs(modalCurrent.x - modalStart.x);
+    const h = Math.abs(modalCurrent.y - modalStart.y);
+    zoomCtx.strokeStyle = colors[drawingClass] || '#fff';
+    zoomCtx.lineWidth = 1 / ZOOM_FACTOR;
+    zoomCtx.setLineDash([2 / ZOOM_FACTOR, 2 / ZOOM_FACTOR]);
+    zoomCtx.strokeRect(x, y, w, h);
+    zoomCtx.setLineDash([]);
+  }
+  
+  // Draw clone preview
+  if (modalClonePreview) {
+    const p = modalClonePreview;
+    const rx = (p.box[0] - p.box[2]/2) * modalCanvas.width;
+    const ry = (p.box[1] - p.box[3]/2) * modalCanvas.height;
+    const rw = p.box[2] * modalCanvas.width;
+    const rh = p.box[3] * modalCanvas.height;
+    zoomCtx.strokeStyle = colors[p.class] || '#fff';
+    zoomCtx.lineWidth = 1 / ZOOM_FACTOR;
+    zoomCtx.setLineDash([2 / ZOOM_FACTOR, 2 / ZOOM_FACTOR]);
+    zoomCtx.strokeRect(rx, ry, rw, rh);
+    zoomCtx.setLineDash([]);
+    zoomCtx.globalAlpha = 0.3;
+    zoomCtx.fillStyle = colors[p.class] || '#888';
+    zoomCtx.fillRect(rx, ry, rw, rh);
+    zoomCtx.globalAlpha = 1;
+  }
+  
+  zoomCtx.restore();
+}
+
+function updateGridCursor(e, index) {
+  if (isZoomEnabled() && (editInGrid || drawingClass)) return; // Zoom handles cursor
+  const canvas = e.target;
+  if (editInGrid || drawingClass) {
+    canvas.style.cursor = drawingClass ? 'crosshair' : 'default';
+  } else {
+    canvas.style.cursor = 'pointer';
+  }
+}
+
+// Modal
+function openModal(index) {
+  modalIndex = index;
+  modalOpen = true;
+  modalSelectedIdx = -1;
+  drawingClass = null;
+  updateModeIndicator();
+  document.getElementById('modal-overlay').classList.add('visible');
+  loadModalImage();
+}
+
+function closeModal() {
+  modalOpen = false;
+  stopAnimation();
+  document.getElementById('modal-overlay').classList.remove('visible');
+  // Update thumbnail
+  const path = images[modalIndex];
+  imageCache[path].regions = JSON.parse(JSON.stringify(modalRegions));
+  scheduleAutoSave(path, modalRegions);
+  const item = document.querySelector(`.grid-item[data-index="${modalIndex}"]`);
+  if (item) loadThumbnail(modalIndex, item.querySelector('canvas'));
+}
+
+async function loadModalImage() {
+  const path = images[modalIndex];
+  const filename = path.split(/[/\\]/).pop();
+  document.getElementById('modal-title').textContent = `${filename} (${modalIndex + 1}/${images.length})`;
+  
+  modalImg = new Image();
+  modalImg.onload = async () => {
+    modalCanvas.width = modalImg.width;
+    modalCanvas.height = modalImg.height;
+    
+    let cached = imageCache[path];
+    if (cached?.regions !== null && cached?.regions !== undefined) {
+      modalRegions = JSON.parse(JSON.stringify(cached.regions));
+    } else {
+      modalRegions = await fetchLabels(path) || [];
+      // Auto-detect if no labels or empty
+      if (modalRegions.length === 0 && document.getElementById('auto-detect').checked) {
+        const detected = await fetchDetections(path) || [];
+        if (detected.length > 0) {
+          modalRegions = detected;
+          if (document.getElementById('autosave-on-detect').checked) {
+            imageCache[path].regions = [...modalRegions];
+            scheduleAutoSave(path, modalRegions, true);
+          } else {
+            unsavedDetected.add(path);
+            updateGridItemUnsavedState(modalIndex);
+          }
+        }
+      }
+    }
+    
+    renderModal();
+    renderModalRegionsList();
+    updateModalInfo();
+  };
+  modalImg.src = `/image?path=${encodeURIComponent(path)}`;
+}
+
+function renderModal() {
+  if (!modalImg) return;
+  modalCtx.clearRect(0, 0, modalCanvas.width, modalCanvas.height);
+  modalCtx.drawImage(modalImg, 0, 0);
+  
+  drawRegions(modalCtx, modalRegions, 0, 0, modalCanvas.width, modalCanvas.height, true, modalSelectedIdx);
+  
+  // Draw clone preview
+  if (modalClonePreview) {
+    const p = modalClonePreview;
+    const rx = (p.box[0] - p.box[2]/2) * modalCanvas.width;
+    const ry = (p.box[1] - p.box[3]/2) * modalCanvas.height;
+    const rw = p.box[2] * modalCanvas.width;
+    const rh = p.box[3] * modalCanvas.height;
+    modalCtx.strokeStyle = colors[p.class] || '#fff';
+    modalCtx.lineWidth = 2;
+    modalCtx.setLineDash([5, 5]);
+    modalCtx.strokeRect(rx, ry, rw, rh);
+    modalCtx.setLineDash([]);
+    modalCtx.globalAlpha = 0.3;
+    modalCtx.fillStyle = colors[p.class] || '#888';
+    modalCtx.fillRect(rx, ry, rw, rh);
+    modalCtx.globalAlpha = 1;
+  }
+  
+  if (modalDrawing && drawingClass) {
+    const x = Math.min(modalStart.x, modalCurrent.x);
+    const y = Math.min(modalStart.y, modalCurrent.y);
+    const w = Math.abs(modalCurrent.x - modalStart.x);
+    const h = Math.abs(modalCurrent.y - modalStart.y);
+    modalCtx.strokeStyle = colors[drawingClass] || '#fff';
+    modalCtx.lineWidth = 2;
+    modalCtx.setLineDash([5, 5]);
+    modalCtx.strokeRect(x, y, w, h);
+    modalCtx.setLineDash([]);
+  }
+}
+
+function renderModalRegionsList() {
+  const list = document.getElementById('modal-regions-list');
+  list.innerHTML = '';
+  
+  modalRegions.forEach((r, i) => {
+    const unknown = isUnknownClass(r.class);
+    const item = document.createElement('div');
+    item.className = 'region-item' + (i === modalSelectedIdx ? ' selected' : '') + (unknown ? ' unknown' : '');
+    const color = unknown ? '#ff4444' : (colors[r.class] || '#888');
+    const label = unknown ? `??? (${r.class})` : r.class;
+    item.innerHTML = `<span class="color" style="background:${color}"></span><span>${label}</span>`;
+    item.onclick = () => {
+      modalSelectedIdx = i;
+      drawingClass = null;
+      updateModeIndicator();
+      renderModalRegionsList();
+      renderModal();
+      updateModalInfo();
+      refreshZoomWindow();
+    };
+    list.appendChild(item);
+  });
+}
+
+function updateModalInfo() {
+  document.getElementById('modal-image-size').textContent = modalImg ? `${modalImg.width} × ${modalImg.height}` : '-';
+  
+  if (modalSelectedIdx >= 0 && modalSelectedIdx < modalRegions.length) {
+    const r = modalRegions[modalSelectedIdx];
+    const px = Math.round((r.box[0] - r.box[2]/2) * modalCanvas.width);
+    const py = Math.round((r.box[1] - r.box[3]/2) * modalCanvas.height);
+    const pw = Math.round(r.box[2] * modalCanvas.width);
+    const ph = Math.round(r.box[3] * modalCanvas.height);
+    document.getElementById('modal-region-info').innerHTML = `<b>${r.class}</b><br>${px},${py} ${pw}×${ph}`;
+  } else {
+    document.getElementById('modal-region-info').textContent = 'Select a region';
+  }
+}
+
+function getHandleAtPoint(mx, my, r) {
+  const rx = (r.box[0] - r.box[2]/2) * modalCanvas.width;
+  const ry = (r.box[1] - r.box[3]/2) * modalCanvas.height;
+  const rw = r.box[2] * modalCanvas.width;
+  const rh = r.box[3] * modalCanvas.height;
+  const hs = HANDLE_SIZE;
+  
+  const handles = [
+    { x: rx, y: ry, mode: 'nw' },
+    { x: rx + rw, y: ry, mode: 'ne' },
+    { x: rx, y: ry + rh, mode: 'sw' },
+    { x: rx + rw, y: ry + rh, mode: 'se' },
+    { x: rx + rw/2, y: ry, mode: 'n' },
+    { x: rx + rw/2, y: ry + rh, mode: 's' },
+    { x: rx, y: ry + rh/2, mode: 'w' },
+    { x: rx + rw, y: ry + rh/2, mode: 'e' },
+  ];
+  
+  for (const h of handles) {
+    if (Math.abs(mx - h.x) <= hs && Math.abs(my - h.y) <= hs) {
+      return h.mode;
+    }
+  }
+  return null;
+}
+
+modalCanvas.addEventListener('mousedown', e => {
+  const rect = modalCanvas.getBoundingClientRect();
+  const sx = modalCanvas.width / rect.width;
+  const sy = modalCanvas.height / rect.height;
+  const mx = (e.clientX - rect.left) * sx;
+  const my = (e.clientY - rect.top) * sy;
+  
+  if (drawingClass) {
+    modalDrawing = true;
+    modalStart = { x: mx, y: my };
+    modalCurrent = { x: mx, y: my };
+    return;
+  }
+  
+  // Check handles on selected region first
+  if (modalSelectedIdx >= 0) {
+    const handle = getHandleAtPoint(mx, my, modalRegions[modalSelectedIdx]);
+    if (handle) {
+      modalDragMode = handle;
+      modalDragStart = { x: mx, y: my };
+      modalDragRegion = { ...modalRegions[modalSelectedIdx], box: [...modalRegions[modalSelectedIdx].box] };
+      return;
+    }
+  }
+  
+  // Find region
+  for (let i = modalRegions.length - 1; i >= 0; i--) {
+    const r = modalRegions[i];
+    const rx = (r.box[0] - r.box[2]/2) * modalCanvas.width;
+    const ry = (r.box[1] - r.box[3]/2) * modalCanvas.height;
+    const rw = r.box[2] * modalCanvas.width;
+    const rh = r.box[3] * modalCanvas.height;
+    if (mx >= rx && mx <= rx + rw && my >= ry && my <= ry + rh) {
+      modalSelectedIdx = i;
+      modalDragMode = 'move';
+      modalDragStart = { x: mx, y: my };
+      modalDragRegion = { ...modalRegions[i], box: [...modalRegions[i].box] };
+      modalCloneMode = e.ctrlKey;
+      renderModalRegionsList();
+      renderModal();
+      updateModalInfo();
+      refreshZoomWindow();
+      return;
+    }
+  }
+  modalSelectedIdx = -1;
+  renderModalRegionsList();
+  renderModal();
+  updateModalInfo();
+  refreshZoomWindow();
+});
+
+modalCanvas.addEventListener('mousemove', e => {
+  const rect = modalCanvas.getBoundingClientRect();
+  const sx = modalCanvas.width / rect.width;
+  const sy = modalCanvas.height / rect.height;
+  const mx = (e.clientX - rect.left) * sx;
+  const my = (e.clientY - rect.top) * sy;
+  
+  if (modalDrawing) {
+    modalCurrent = { x: mx, y: my };
+    renderModal();
+    return;
+  }
+  
+  if (modalDragMode && modalSelectedIdx >= 0) {
+    let dx = (mx - modalDragStart.x) / modalCanvas.width;
+    let dy = (my - modalDragStart.y) / modalCanvas.height;
+    const r = modalRegions[modalSelectedIdx];
+    const orig = modalDragRegion.box;
+    
+    // Axis lock with Shift key
+    if (e.shiftKey && modalDragMode === 'move') {
+      if (!modalAxisLock && (Math.abs(dx) > 0.005 || Math.abs(dy) > 0.005)) {
+        modalAxisLock = Math.abs(dx) > Math.abs(dy) ? 'h' : 'v';
+      }
+      if (modalAxisLock === 'h') dy = 0;
+      if (modalAxisLock === 'v') dx = 0;
+    } else if (!e.shiftKey) {
+      modalAxisLock = null;
+    }
+    
+    if (modalDragMode === 'move') {
+      if (modalCloneMode) {
+        // Clone mode: original stays in place, show preview of clone
+        modalClonePreview = {
+          class: r.class,
+          box: [orig[0] + dx, orig[1] + dy, orig[2], orig[3]]
+        };
+      } else {
+        r.box[0] = orig[0] + dx;
+        r.box[1] = orig[1] + dy;
+        modalClonePreview = null;
+      }
+    } else {
+      // Resize: convert to x1,y1,x2,y2
+      let x1 = orig[0] - orig[2]/2;
+      let y1 = orig[1] - orig[3]/2;
+      let x2 = orig[0] + orig[2]/2;
+      let y2 = orig[1] + orig[3]/2;
+      
+      if (modalDragMode.includes('w')) x1 += dx;
+      if (modalDragMode.includes('e')) x2 += dx;
+      if (modalDragMode.includes('n')) y1 += dy;
+      if (modalDragMode.includes('s')) y2 += dy;
+      
+      // Ensure min size
+      if (x2 - x1 < 0.01) x2 = x1 + 0.01;
+      if (y2 - y1 < 0.01) y2 = y1 + 0.01;
+      
+      r.box[0] = (x1 + x2) / 2;
+      r.box[1] = (y1 + y2) / 2;
+      r.box[2] = x2 - x1;
+      r.box[3] = y2 - y1;
+      modalClonePreview = null;
+    }
+    renderModal();
+    updateModalInfo();
+    return;
+  }
+  
+  // Update zoom window for modal
+  updateModalZoomWindow(e);
+  
+  // Update cursor based on hover (only if zoom is disabled)
+  if (!isZoomEnabled() || (!drawingClass && modalSelectedIdx < 0)) {
+    if (modalSelectedIdx >= 0 && !drawingClass) {
+      const handle = getHandleAtPoint(mx, my, modalRegions[modalSelectedIdx]);
+      const cursors = { nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize',
+                        n: 'ns-resize', s: 'ns-resize', w: 'ew-resize', e: 'ew-resize' };
+      modalCanvas.style.cursor = handle ? cursors[handle] : 'move';
+    } else {
+      modalCanvas.style.cursor = drawingClass ? 'crosshair' : 'default';
+    }
+  }
+});
+
+modalCanvas.addEventListener('mouseleave', () => {
+  hideZoomWindow(modalCanvas);
+});
+
+modalCanvas.addEventListener('mouseup', e => {
+  if (modalDrawing && drawingClass) {
+    const rect = modalCanvas.getBoundingClientRect();
+    const sx = modalCanvas.width / rect.width;
+    const sy = modalCanvas.height / rect.height;
+    const mx = (e.clientX - rect.left) * sx;
+    const my = (e.clientY - rect.top) * sy;
+    
+    const x = Math.min(modalStart.x, mx);
+    const y = Math.min(modalStart.y, my);
+    const w = Math.abs(mx - modalStart.x);
+    const h = Math.abs(my - modalStart.y);
+    
+    if (w > 5 && h > 5) {
+      const cx = (x + w/2) / modalCanvas.width;
+      const cy = (y + h/2) / modalCanvas.height;
+      const bw = w / modalCanvas.width;
+      const bh = h / modalCanvas.height;
+      
+      const classId = Object.entries(classNames).find(([k, v]) => v === drawingClass)?.[0];
+      modalRegions.push({
+        class: drawingClass,
+        class_id: classId ? parseInt(classId) : -1,
+        box: [cx, cy, bw, bh]
+      });
+      modalSelectedIdx = modalRegions.length - 1;
+      renderModalRegionsList();
+      
+      if (document.getElementById('deselect-after-draw').checked) {
+        drawingClass = null;
+        updateModeIndicator();
+      }
+    }
+    
+    modalDrawing = false;
+    renderModal();
+    updateModalInfo();
+    return;
+  }
+  
+  // Handle clone on Ctrl+drag
+  if (modalCloneMode && modalDragMode === 'move' && modalClonePreview) {
+    const r = modalRegions[modalSelectedIdx];
+    const cloned = {
+      class: r.class,
+      class_id: r.class_id,
+      box: [...modalClonePreview.box]
+    };
+    modalRegions.push(cloned);
+    modalSelectedIdx = modalRegions.length - 1;
+    renderModalRegionsList();
+    renderModal();
+    updateModalInfo();
+  }
+  
+  modalDragMode = null;
+  modalDragRegion = null;
+  modalCloneMode = false;
+  modalClonePreview = null;
+  modalAxisLock = null;
+});
+
+function modalClear() {
+  modalRegions = [];
+  modalSelectedIdx = -1;
+  renderModal();
+  renderModalRegionsList();
+}
+
+async function modalDetect() {
+  setStatus('Detecting...');
+  const path = images[modalIndex];
+  const detected = await fetchDetections(path);
+  if (detected && detected.length > 0) {
+    modalRegions = detected;
+    modalSelectedIdx = -1;
+    unsavedDetected.add(path);
+    updateGridItemUnsavedState(modalIndex);
+    renderModal();
+    renderModalRegionsList();
+    setStatus(`Detected ${detected.length} regions`);
+  } else {
+    setStatus('No detections');
+  }
+}
+
+async function runGridDetection(index) {
+  const path = images[index];
+  setStatus(`Detecting on ${path.split(/[/\\]/).pop()}...`);
+  const detected = await fetchDetections(path);
+  if (detected && detected.length > 0) {
+    imageCache[path].regions = detected;
+    unsavedDetected.add(path);
+    updateGridItemUnsavedState(index);
+    
+    // Redraw the canvas
+    const item = document.querySelector(`.grid-item[data-index="${index}"]`);
+    if (item) {
+      const canvas = item.querySelector('canvas');
+      if (canvas) {
+        const ctx = canvas.getContext('2d');
+        const cached = imageCache[path];
+        if (cached?.img) {
+          const coords = getCanvasCoords(canvas, index);
+          ctx.fillStyle = '#0a0a0a';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(cached.img, coords.x, coords.y, coords.w, coords.h);
+          drawRegions(ctx, detected, coords.x, coords.y, coords.w, coords.h, false);
+        }
+      }
+    }
+    
+    updateGridItemCounts(index);
+    setStatus(`Detected ${detected.length} regions`);
+  } else {
+    setStatus('No detections');
+  }
+}
+
+async function saveGridItem(index) {
+  const path = images[index];
+  const regions = imageCache[path]?.regions;
+  if (regions === undefined) {
+    setStatus('No regions to save');
+    return;
+  }
+  
+  setStatus(`Saving ${path.split(/[/\\]/).pop()}...`);
+  await fetch('/save', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      image_path: path,
+      regions: regions,
+      dataset_base: datasetBase,
+      structure: datasetStructure,
+      classes: classNames
+    })
+  });
+  
+  if (!progress.completed.includes(path)) {
+    progress.completed.push(path);
+  }
+  updateProgress();
+  updateGridItemMark(path);
+  setStatus(`Saved ${path.split(/[/\\]/).pop()}`);
+}
+
+async function modalSave() {
+  const path = images[modalIndex];
+  
+  await fetch('/save', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      image_path: path,
+      regions: modalRegions,
+      dataset_base: datasetBase,
+      structure: datasetStructure,
+      classes: classNames
+    })
+  });
+  
+  imageCache[path].regions = JSON.parse(JSON.stringify(modalRegions));
+  if (!progress.completed.includes(path)) {
+    progress.completed.push(path);
+  }
+  updateProgress();
+  setStatus('Saved!');
+}
+
+async function modalSaveClose() {
+  await modalSave();
+  closeModal();
+}
+
+function modalPrev() {
+  if (modalIndex > 0) {
+    imageCache[images[modalIndex]].regions = JSON.parse(JSON.stringify(modalRegions));
+    modalIndex--;
+    selectedIndex = modalIndex;
+    modalSelectedIdx = -1;
+    loadModalImage();
+  }
+}
+
+function modalNext() {
+  if (modalIndex < images.length - 1) {
+    imageCache[images[modalIndex]].regions = JSON.parse(JSON.stringify(modalRegions));
+    modalIndex++;
+    selectedIndex = modalIndex;
+    modalSelectedIdx = -1;
+    loadModalImage();
+  }
+}
+
+// Pagination
+function firstPage() { currentPage = 0; updatePagination(); renderGrid(); }
+function prevPage() { if (currentPage > 0) { currentPage--; updatePagination(); renderGrid(); } }
+function nextPage() { if ((currentPage + 1) * perPage < images.length) { currentPage++; updatePagination(); renderGrid(); } }
+function lastPage() { currentPage = Math.max(0, Math.ceil(images.length / perPage) - 1); updatePagination(); renderGrid(); }
+function goToPage() {
+  const p = parseInt(document.getElementById('page-input').value) - 1;
+  const max = Math.ceil(images.length / perPage) - 1;
+  if (p >= 0 && p <= max) {
+    currentPage = p;
+    renderGrid();
+  }
+}
+
+function toggleFilterPopup() {
+  const overlay = document.getElementById('filter-overlay');
+  overlay.classList.toggle('visible');
+}
+
+function applyFilter() {
+  const text = document.getElementById('filter-names').value;
+  // Normalize line endings, remove extensions, clean up
+  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+    .split('\n')
+    .map(l => l.trim().toLowerCase().replace(/\.(jpg|jpeg|png|bmp|webp)$/i, ''))
+    .filter(l => l.length > 0);
+  const statusEl = document.getElementById('filter-status');
+  
+  if (allImages.length === 0) {
+    statusEl.textContent = 'No images loaded';
+    statusEl.style.color = '#ff6b6b';
+    return;
+  }
+  
+  activeFilter = lines;
+  
+  if (lines.length === 0) {
+    images = [...allImages];
+    statusEl.textContent = '';
+  } else {
+    // Get sample for debugging
+    const samplePath = allImages[0];
+    const sampleFull = samplePath.split(/[/\\]/).pop().toLowerCase();
+    const sampleBase = sampleFull.replace(/\.(jpg|jpeg|png|bmp|webp)$/i, '');
+    console.log('Filter lines (first 3):', lines.slice(0, 3));
+    console.log('Sample path:', samplePath);
+    console.log('Sample filename:', sampleFull);
+    console.log('Sample basename:', sampleBase);
+    
+    // Match by basename (without extension) - substring match
+    images = allImages.filter(path => {
+      const filename = path.split(/[/\\]/).pop().toLowerCase();
+      const basename = filename.replace(/\.(jpg|jpeg|png|bmp|webp)$/i, '');
+      return lines.some(sub => basename.includes(sub) || sub.includes(basename));
+    });
+    
+    if (images.length === 0) {
+      statusEl.innerHTML = `Matched 0 of ${allImages.length}<br><small style="color:#aaa">Dataset sample: "${sampleFull}"<br>Filter sample: "${lines[0]}"</small>`;
+    } else {
+      statusEl.textContent = `Matched ${images.length} of ${allImages.length}`;
+    }
+    statusEl.style.color = images.length > 0 ? '#4ade80' : '#ff6b6b';
+  }
+  
+  currentPage = 0;
+  updatePagination();
+  renderGrid();
+  updateFilterButton();
+  
+  if (images.length > 0) {
+    document.getElementById('filter-overlay').classList.remove('visible');
+  }
+}
+
+function clearFilter() {
+  document.getElementById('filter-names').value = '';
+  document.getElementById('filter-status').textContent = '';
+  activeFilter = [];
+  images = [...allImages];
+  currentPage = 0;
+  updatePagination();
+  renderGrid();
+  updateFilterButton();
+  document.getElementById('filter-overlay').classList.remove('visible');
+}
+
+function updateFilterButton() {
+  const btn = document.getElementById('filter-btn');
+  if (activeFilter.length > 0) {
+    btn.textContent = `Filter (${images.length}/${allImages.length})`;
+    btn.classList.add('active');
+  } else {
+    btn.textContent = 'Filter';
+    btn.classList.remove('active');
+  }
+}
+
+async function saveAllOnPage() {
+  const start = currentPage * perPage;
+  const end = Math.min(start + perPage, images.length);
+  const onlyWithRegions = document.getElementById('only-with-regions').checked;
+  
+  const items = [];
+  for (let i = start; i < end; i++) {
+    const path = images[i];
+    const regions = imageCache[path]?.regions;
+    if (regions !== undefined) {
+      if (onlyWithRegions && regions.length === 0) continue;
+      items.push({ image_path: path, regions: regions });
+    }
+  }
+  
+  await saveBatch(items, 'images on page');
+}
+
+async function saveAndNextPage() {
+  await saveAllOnPage();
+  nextPage();
+}
+
+// Change class of selected region
+function changeSelectedClass(newClass) {
+  if (modalOpen && modalSelectedIdx >= 0) {
+    const classId = Object.entries(classNames).find(([k, v]) => v === newClass)?.[0];
+    modalRegions[modalSelectedIdx].class = newClass;
+    modalRegions[modalSelectedIdx].class_id = classId ? parseInt(classId) : -1;
+    renderModal();
+    renderModalRegionsList();
+    updateModalInfo();
+    refreshZoomWindow();
+  } else if (editInGrid && gridEditSelectedIdx >= 0) {
+    const classId = Object.entries(classNames).find(([k, v]) => v === newClass)?.[0];
+    gridEditRegions[gridEditSelectedIdx].class = newClass;
+    gridEditRegions[gridEditSelectedIdx].class_id = classId ? parseInt(classId) : -1;
+    const path = images[gridEditIndex];
+    imageCache[path].regions = JSON.parse(JSON.stringify(gridEditRegions));
+    scheduleAutoSave(path, gridEditRegions);
+    redrawGridCanvas(gridEditIndex);
+    refreshZoomWindow();
+  }
+}
+
+// Keyboard
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if (document.getElementById('hotkey-modal').classList.contains('visible')) {
+    if (e.key === 'Escape') closeHotkeyModal();
+    return;
+  }
+  if (document.getElementById('split-modal').classList.contains('visible')) {
+    if (e.key === 'Escape') closeSplitModal();
+    return;
+  }
+  
+  const key = e.key.toLowerCase();
+  
+  if (e.key === 'Escape') {
+    if (modalOpen) closeModal();
+    else if (drawingClass) { drawingClass = null; updateModeIndicator(); }
+    return;
+  }
+  
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    if (modalOpen && modalSelectedIdx >= 0) {
+      modalRegions.splice(modalSelectedIdx, 1);
+      modalSelectedIdx = -1;
+      const path = images[modalIndex];
+      imageCache[path].regions = JSON.parse(JSON.stringify(modalRegions));
+      scheduleAutoSave(path, modalRegions);
+      renderModal();
+      renderModalRegionsList();
+    } else if (editInGrid && gridEditSelectedIdx >= 0) {
+      gridEditRegions.splice(gridEditSelectedIdx, 1);
+      gridEditSelectedIdx = -1;
+      const path = images[gridEditIndex];
+      imageCache[path].regions = JSON.parse(JSON.stringify(gridEditRegions));
+      scheduleAutoSave(path, gridEditRegions);
+      redrawGridCanvas(gridEditIndex);
+    }
+    return;
+  }
+  
+  if (key === 'r') {
+    e.preventDefault();
+    if (modalOpen) modalDetect();
+    return;
+  }
+  
+  // Arrow keys to move selected region pixel-by-pixel
+  if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+    e.preventDefault();
+    let region = null;
+    let imgWidth = 1, imgHeight = 1;
+    let path = null;
+    
+    if (modalOpen && modalSelectedIdx >= 0) {
+      region = modalRegions[modalSelectedIdx];
+      if (modalImg) {
+        imgWidth = modalImg.width;
+        imgHeight = modalImg.height;
+      }
+      path = images[modalIndex];
+    } else if (editInGrid && gridEditSelectedIdx >= 0) {
+      region = gridEditRegions[gridEditSelectedIdx];
+      const cached = imageCache[images[gridEditIndex]];
+      if (cached?.img) {
+        imgWidth = cached.img.width;
+        imgHeight = cached.img.height;
+      }
+      path = images[gridEditIndex];
+    }
+    
+    if (region && path) {
+      const step = e.shiftKey ? 5 : 1;
+      const dx = (e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0) / imgWidth;
+      const dy = (e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0) / imgHeight;
+      
+      region.box[0] = Math.max(region.box[2]/2, Math.min(1 - region.box[2]/2, region.box[0] + dx));
+      region.box[1] = Math.max(region.box[3]/2, Math.min(1 - region.box[3]/2, region.box[1] + dy));
+      
+      imageCache[path].regions = JSON.parse(JSON.stringify(modalOpen ? modalRegions : gridEditRegions));
+      scheduleAutoSave(path, modalOpen ? modalRegions : gridEditRegions);
+      
+      if (modalOpen) {
+        renderModal();
+      } else {
+        redrawGridCanvas(gridEditIndex);
+      }
+      refreshZoomWindow();
+    }
+    return;
+  }
+  
+  if (key === ' ') {
+    e.preventDefault();
+    saveAndNextPage();
+    return;
+  }
+  
+  if (e.key === 'Enter' || key === 'e') {
+    e.preventDefault();
+    if (!modalOpen && selectedIndex >= 0) openModal(selectedIndex);
+    return;
+  }
+  
+  if (e.key === 'PageUp') { e.preventDefault(); prevPage(); return; }
+  if (e.key === 'PageDown') { e.preventDefault(); nextPage(); return; }
+
+  if (key === 'z') {
+    e.preventDefault();
+    const zoomCheckbox = document.getElementById('enable-zoom');
+    zoomCheckbox.checked = !zoomCheckbox.checked;
+    saveSettings();
+    return;
+  }
+
+  // Hotkey - with Ctrl+Alt changes class, without modifiers draws
+  if (hotkeys[key]) {
+    e.preventDefault();
+    if (e.ctrlKey && e.altKey) {
+      changeSelectedClass(hotkeys[key]);
+    } else {
+      setDrawingClass(hotkeys[key]);
+    }
+    return;
+  }
+});
+
+// Cursor label follows mouse
+document.addEventListener('mousemove', e => {
+  const label = document.getElementById('cursor-label');
+  if (drawingClass) {
+    label.style.left = (e.clientX + 15) + 'px';
+    label.style.top = (e.clientY + 15) + 'px';
+  }
+});
+
+// Hotkey input
+document.getElementById('hotkey-input').addEventListener('keydown', e => {
+  e.preventDefault();
+  if (e.key !== 'Escape' && e.key !== 'Enter' && e.key.length === 1) {
+    document.getElementById('hotkey-input').value = e.key.toLowerCase();
+  }
+});
+
+// Init
+(function init() {
+  const savedYaml = localStorage.getItem('yoloLabelerYaml');
+  if (savedYaml) {
+    document.getElementById('yaml-path').value = savedYaml;
+  }
+  
+  window.addEventListener('resize', () => {
+    if (images.length > 0) renderGrid();
+  });
+})();
+</script>
+</body>
+</html>
