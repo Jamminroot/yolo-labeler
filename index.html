@@ -45,8 +45,7 @@ body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; hei
 .grid-item.unsaved-detected { border-color: #ffcc00; background: linear-gradient(135deg, rgba(255,200,0,0.15) 0%, transparent 50%); }
 .grid-item.marked { border-color: #c0392b; box-shadow: 0 0 8px rgba(192,57,43,0.5); }
 
-#mark-actions { position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%); background: #16213e; border: 1px solid #c0392b; border-radius: 8px; padding: 8px 16px; display: none; align-items: center; gap: 10px; z-index: 900; box-shadow: 0 4px 16px rgba(0,0,0,0.5); }
-#mark-actions.visible { display: flex; }
+#mark-actions { position: fixed; bottom: 50px; left: 50%; transform: translateX(-50%); background: #16213e; border: 2px solid #c0392b; border-radius: 8px; padding: 10px 20px; align-items: center; gap: 12px; z-index: 999; box-shadow: 0 4px 20px rgba(0,0,0,0.7); }
 #mark-count { font-size: 13px; color: #eee; font-weight: bold; }
 .grid-item-image { position: relative; flex-shrink: 0; }
 .grid-item.editing::after { border-color: #00ff88; border-width: 3px; }
@@ -226,7 +225,7 @@ body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; hei
   <button class="btn btn-sm btn-secondary" id="mark-mode-btn" onclick="toggleMarkMode()" style="margin-left:4px;">Mark</button>
 </div>
 
-<div id="mark-actions">
+<div id="mark-actions" style="display:none">
   <span id="mark-count">0 selected</span>
   <button class="btn btn-sm btn-secondary" onclick="clearMarkedSelection()">Clear Selection</button>
   <button class="btn btn-sm" onclick="clearLabelsMarked()">Clear Labels</button>
@@ -2678,6 +2677,7 @@ function updateGridCursor(e, index) {
 function toggleMarkMode() {
   markMode = !markMode;
   if (!markMode) markedItems.clear();
+  if (markMode && drawingClass) { drawingClass = null; updateModeIndicator(); }
   document.getElementById('mark-mode-btn').classList.toggle('active', markMode);
   updateMarkActions();
   renderGrid();
@@ -2701,7 +2701,7 @@ function clearMarkedSelection() {
 function updateMarkActions() {
   const bar = document.getElementById('mark-actions');
   const count = markedItems.size;
-  bar.classList.toggle('visible', count > 0);
+  bar.style.display = count > 0 ? 'flex' : 'none';
   document.getElementById('mark-count').textContent = count + ' selected';
 }
 
