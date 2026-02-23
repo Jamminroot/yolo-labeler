@@ -156,7 +156,7 @@ body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; hei
 <body>
 
 <div id="header">
-  <input type="text" id="yaml-path" placeholder="Path to data.yaml" style="width:350px;">
+  <input type="text" id="yaml-path" placeholder="Path to dataset.yaml or folder" style="width:350px;">
   <button class="btn" onclick="loadDataset()">Load Dataset</button>
   <button class="btn btn-secondary btn-sm" onclick="rebuildLabelCache()" title="Scan folder for existing labels">↻ Cache</button>
   <select id="split-select" onchange="changeSplit()">
@@ -248,7 +248,7 @@ body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; hei
   </div>
 </div>
 
-<div id="status-bar">Load a data.yaml to begin</div>
+<div id="status-bar">Load a dataset yaml to begin</div>
 <div id="cursor-label"></div>
 <div id="zoom-window"><canvas width="220" height="220"></canvas></div>
 
@@ -318,8 +318,8 @@ body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; hei
 <input type="color" id="color-picker-input" style="position:absolute;visibility:hidden;">
 
 <div id="create-yaml-modal">
-  <h3>Create data.yaml</h3>
-  <p style="margin-bottom:10px;color:#aaa;font-size:12px;">No data.yaml found. Enter class names (one per line):</p>
+  <h3>Create dataset.yaml</h3>
+  <p style="margin-bottom:10px;color:#aaa;font-size:12px;">No dataset yaml found. Enter class names (one per line):</p>
   <textarea id="yaml-classes-input" rows="10" placeholder="class1&#10;class2&#10;class3"></textarea>
   <div class="btns">
     <button class="btn btn-secondary" onclick="closeYamlModal()">Cancel</button>
@@ -725,11 +725,11 @@ async function loadDataset() {
     
     // Check if yaml doesn't exist (empty classes)
     if (Object.keys(data.classes).length === 0) {
-      if (confirm('No data.yaml found at this location. Would you like to create one?')) {
+      if (confirm('No dataset yaml found at this location. Would you like to create one?')) {
         openYamlModal();
         return;
       } else {
-        setStatus('No data.yaml found');
+        setStatus('No dataset yaml found');
         return;
       }
     }
@@ -766,9 +766,9 @@ async function loadDataset() {
       const fix = data.fix_suggestion;
       const yamlTrain = data.yaml_train || 'unknown';
       const yamlVal = data.yaml_val || 'unknown';
-      const msg = `data.yaml specifies train="${yamlTrain}" and val="${yamlVal}" but those paths are empty.\n\n` +
+      const msg = `Dataset yaml specifies train="${yamlTrain}" and val="${yamlVal}" but those paths are empty.\n\n` +
                   `${fix.reason}\n\n` +
-                  `Would you like to update data.yaml to use train="${fix.train}" and val="${fix.val}"?`;
+                  `Would you like to update it to use train="${fix.train}" and val="${fix.val}"?`;
       
       if (confirm(msg)) {
         // Fix the yaml
@@ -783,12 +783,12 @@ async function loadDataset() {
         });
         const fixResult = await fixResp.json();
         if (fixResult.ok) {
-          setStatus('data.yaml updated, reloading...');
+          setStatus('Yaml updated, reloading...');
           // Reload dataset with fixed paths
           loadDataset();
           return;
         } else {
-          setStatus('Failed to fix data.yaml: ' + (fixResult.error || 'unknown error'));
+          setStatus('Failed to fix yaml: ' + (fixResult.error || 'unknown error'));
           return;
         }
       }
@@ -1122,7 +1122,7 @@ async function createYaml() {
     return;
   }
   
-  setStatus('Creating data.yaml...');
+  setStatus('Creating dataset yaml...');
   
   try {
     const resp = await fetch('/create_yaml', {
@@ -1137,13 +1137,13 @@ async function createYaml() {
     
     if (result.ok) {
       closeYamlModal();
-      setStatus('data.yaml created, loading dataset...');
+      setStatus('Dataset yaml created, loading dataset...');
       loadDataset();
     } else {
-      setStatus('Failed to create data.yaml: ' + (result.error || 'unknown error'));
+      setStatus('Failed to create dataset yaml: ' + (result.error || 'unknown error'));
     }
   } catch (e) {
-    setStatus('Failed to create data.yaml: ' + e.message);
+    setStatus('Failed to create dataset yaml: ' + e.message);
   }
 }
 
@@ -1716,7 +1716,7 @@ async function fetchDetections(imagePath) {
 }
 
 function isUnknownClass(className) {
-  return !Object.values(classNames).includes(className) || className.startsWith('unknown_');
+  return !Object.values(classNames).includes(className);
 }
 
 function findOverlaps(regions) {
@@ -2656,6 +2656,44 @@ function updateGridCursor(e, index) {
 }
 
 // Modal
+async function deleteEntry(index) {
+  if (index < 0 || index >= images.length) return;
+  const path = images[index];
+  const filename = path.split(/[/\\]/).pop();
+  if (!confirm(`Delete "${filename}" and its labels?`)) return;
+  try {
+    const resp = await fetch('/delete_entry', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ image_path: path, dataset_base: datasetBase, structure: datasetStructure })
+    });
+    const result = await resp.json();
+    if (result.ok) {
+      const allIdx = allImages.indexOf(path);
+      if (allIdx >= 0) allImages.splice(allIdx, 1);
+      images.splice(index, 1);
+      delete imageCache[path];
+      const cIdx = progress.completed.indexOf(path);
+      if (cIdx >= 0) progress.completed.splice(cIdx, 1);
+      if (selectedIndex >= images.length) selectedIndex = images.length - 1;
+      if (modalOpen) {
+        closeModal();
+        if (images.length > 0) {
+          const next = Math.min(index, images.length - 1);
+          selectItem(next);
+          openModal(next);
+        }
+      }
+      if (currentPage * perPage >= images.length && currentPage > 0) currentPage--;
+      renderGrid();
+      updatePagination();
+      setStatus(`Deleted ${filename}`, 'ok');
+    }
+  } catch (err) {
+    setStatus('Delete failed: ' + err.message, 'error');
+  }
+}
+
 function openModal(index) {
   modalIndex = index;
   modalOpen = true;
@@ -3318,6 +3356,13 @@ document.addEventListener('keydown', e => {
     return;
   }
   
+  if ((e.key === 'Delete' || e.key === 'Backspace') && e.ctrlKey) {
+    e.preventDefault();
+    const idx = modalOpen ? modalIndex : selectedIndex;
+    if (idx >= 0) deleteEntry(idx);
+    return;
+  }
+
   if (e.key === 'Delete' || e.key === 'Backspace') {
     if (modalOpen && modalSelectedIdx >= 0) {
       modalRegions.splice(modalSelectedIdx, 1);

@@ -32,13 +32,21 @@ def get_images_in_folder_recursive(folder: Path) -> list:
     return sorted([p for p in folder.rglob("*") if p.suffix.lower() in exts])
 
 
-def load_data_yaml(yaml_path: str) -> dict:
-    """Load and parse data.yaml file, detecting dataset structure."""
-    path = Path(yaml_path)
+_YAML_CANDIDATES = ["dataset.yaml", "dataset.yml", "data.yaml", "data.yml"]
 
-    # If path is a directory, look for data.yaml inside
+
+def resolve_yaml_path(path: Path) -> Path:
     if path.is_dir():
-        path = path / "data.yaml"
+        for name in _YAML_CANDIDATES:
+            candidate = path / name
+            if candidate.exists():
+                return candidate
+        return path / _YAML_CANDIDATES[0]
+    return path
+
+
+def load_data_yaml(yaml_path: str) -> dict:
+    path = resolve_yaml_path(Path(yaml_path))
 
     if not path.exists():
         return {
@@ -674,12 +682,10 @@ class YoloLabelHandler(SimpleHTTPRequestHandler):
             class_name = data["class_name"]
 
             try:
-                path = Path(yaml_path)
-                if path.is_dir():
-                    path = path / "data.yaml"
+                path = resolve_yaml_path(Path(yaml_path))
 
                 if not path.exists():
-                    raise FileNotFoundError(f"data.yaml not found at {path}")
+                    raise FileNotFoundError(f"No yaml found at {path}")
 
                 with open(path, "r", encoding="utf-8") as f:
                     yaml_data = yaml.safe_load(f)
@@ -714,12 +720,10 @@ class YoloLabelHandler(SimpleHTTPRequestHandler):
             val_path = data["val"]
 
             try:
-                path = Path(yaml_path)
-                if path.is_dir():
-                    path = path / "data.yaml"
+                path = resolve_yaml_path(Path(yaml_path))
 
                 if not path.exists():
-                    raise FileNotFoundError(f"data.yaml not found at {path}")
+                    raise FileNotFoundError(f"No yaml found at {path}")
 
                 # Read existing yaml
                 with open(path, "r", encoding="utf-8") as f:
@@ -783,11 +787,8 @@ class YoloLabelHandler(SimpleHTTPRequestHandler):
                             label_path.rename(label_dest)
                             moved_labels += 1
 
-                # Update data.yaml
                 if yaml_path:
-                    yp = Path(yaml_path)
-                    if yp.is_dir():
-                        yp = yp / "data.yaml"
+                    yp = resolve_yaml_path(Path(yaml_path))
                     if yp.exists():
                         with open(yp, "r", encoding="utf-8") as f:
                             yaml_data = yaml.safe_load(f)
@@ -923,10 +924,9 @@ class YoloLabelHandler(SimpleHTTPRequestHandler):
 
             try:
                 path = Path(yaml_path)
-                # If path is directory, create data.yaml inside
                 if path.is_dir() or not path.suffix:
                     base_dir = path if path.is_dir() else path
-                    yaml_file = base_dir / "data.yaml"
+                    yaml_file = resolve_yaml_path(base_dir)
                 else:
                     yaml_file = path
                     base_dir = path.parent
@@ -957,6 +957,40 @@ class YoloLabelHandler(SimpleHTTPRequestHandler):
                 self.send_header("Content-type", "application/json")
                 self.end_headers()
                 self.wfile.write(json.dumps({"ok": False, "error": str(e)}).encode())
+        elif self.path == "/delete_entry":
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length))
+            image_path = data["image_path"]
+            dataset_base = data["dataset_base"]
+            structure = data.get("structure", "flat")
+
+            deleted = []
+            img = Path(image_path)
+            if img.exists():
+                img.unlink()
+                deleted.append(str(img))
+
+            label = get_label_path(image_path, dataset_base, structure)
+            if label.exists():
+                label.unlink()
+                deleted.append(str(label))
+
+            cache_file = get_cache_file(dataset_base)
+            if cache_file.exists():
+                try:
+                    cache = json.loads(cache_file.read_text())
+                    completed = cache.get("completed", [])
+                    if image_path in completed:
+                        completed.remove(image_path)
+                        cache_file.write_text(json.dumps(cache, indent=2))
+                except (json.JSONDecodeError, OSError):
+                    pass
+
+            self.send_response(200)
+            self.send_header("Content-type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"ok": True, "deleted": deleted}).encode())
+
         else:
             self.send_error(404)
 
