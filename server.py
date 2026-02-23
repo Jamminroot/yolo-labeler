@@ -597,8 +597,9 @@ class YoloLabelHandler(SimpleHTTPRequestHandler):
                     if cache_file.exists():
                         try:
                             cache = json.loads(cache_file.read_text())
-                            if image_path not in cache.get("completed", []):
-                                cache["completed"].append(image_path)
+                            completed = cache.setdefault("completed", [])
+                            if image_path not in completed:
+                                completed.append(image_path)
                                 cache_file.write_text(json.dumps(cache, indent=2))
                         except (json.JSONDecodeError, OSError):
                             pass
@@ -630,8 +631,9 @@ class YoloLabelHandler(SimpleHTTPRequestHandler):
             if cache_file.exists():
                 try:
                     cache = json.loads(cache_file.read_text())
-                    if image_path not in cache.get("completed", []):
-                        cache["completed"].append(image_path)
+                    completed = cache.setdefault("completed", [])
+                    if image_path not in completed:
+                        completed.append(image_path)
                         cache_file.write_text(json.dumps(cache, indent=2))
                 except (json.JSONDecodeError, OSError):
                     pass
