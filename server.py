@@ -991,6 +991,83 @@ class YoloLabelHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({"ok": True, "deleted": deleted}).encode())
 
+        elif self.path == "/delete_batch":
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length))
+            items = data["items"]
+            dataset_base = data["dataset_base"]
+            structure = data.get("structure", "flat")
+
+            deleted = []
+            cache_file = get_cache_file(dataset_base)
+            cache = None
+            if cache_file.exists():
+                try:
+                    cache = json.loads(cache_file.read_text())
+                except (json.JSONDecodeError, OSError):
+                    cache = None
+
+            for image_path in items:
+                img = Path(image_path)
+                if img.exists():
+                    img.unlink()
+                label = get_label_path(image_path, dataset_base, structure)
+                if label.exists():
+                    label.unlink()
+                if cache:
+                    completed = cache.get("completed", [])
+                    if image_path in completed:
+                        completed.remove(image_path)
+                deleted.append(image_path)
+
+            if cache:
+                try:
+                    cache_file.write_text(json.dumps(cache, indent=2))
+                except OSError:
+                    pass
+
+            self.send_response(200)
+            self.send_header("Content-type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"ok": True, "deleted": deleted}).encode())
+
+        elif self.path == "/clear_labels_batch":
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length))
+            items = data["items"]
+            dataset_base = data["dataset_base"]
+            structure = data.get("structure", "flat")
+
+            cleared = []
+            cache_file = get_cache_file(dataset_base)
+            cache = None
+            if cache_file.exists():
+                try:
+                    cache = json.loads(cache_file.read_text())
+                except (json.JSONDecodeError, OSError):
+                    cache = None
+
+            for image_path in items:
+                label = get_label_path(image_path, dataset_base, structure)
+                if label.exists():
+                    label.unlink()
+                if cache:
+                    completed = cache.get("completed", [])
+                    if image_path in completed:
+                        completed.remove(image_path)
+                cleared.append(image_path)
+
+            if cache:
+                try:
+                    cache_file.write_text(json.dumps(cache, indent=2))
+                except OSError:
+                    pass
+
+            self.send_response(200)
+            self.send_header("Content-type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"ok": True, "cleared": cleared}).encode())
+
         else:
             self.send_error(404)
 

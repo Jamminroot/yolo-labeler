@@ -43,6 +43,11 @@ body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; hei
 .grid-item:hover { border-color: #555; }
 .grid-item.selected { border-color: #e94560; }
 .grid-item.unsaved-detected { border-color: #ffcc00; background: linear-gradient(135deg, rgba(255,200,0,0.15) 0%, transparent 50%); }
+.grid-item.marked { border-color: #c0392b; box-shadow: 0 0 8px rgba(192,57,43,0.5); }
+
+#mark-actions { position: fixed; bottom: 40px; left: 50%; transform: translateX(-50%); background: #16213e; border: 1px solid #c0392b; border-radius: 8px; padding: 8px 16px; display: none; align-items: center; gap: 10px; z-index: 900; box-shadow: 0 4px 16px rgba(0,0,0,0.5); }
+#mark-actions.visible { display: flex; }
+#mark-count { font-size: 13px; color: #eee; font-weight: bold; }
 .grid-item-image { position: relative; flex-shrink: 0; }
 .grid-item.editing::after { border-color: #00ff88; border-width: 3px; }
 
@@ -218,6 +223,14 @@ body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; hei
   <button class="btn btn-sm btn-secondary" onclick="saveAllUnsavedDetected()" title="Save all images with unsaved detections">Save Detected</button>
   <label style="margin-left:8px;font-size:12px;"><input type="checkbox" id="only-with-regions" onchange="saveSettings()"> Only with regions</label>
   <button class="btn btn-sm btn-secondary" onclick="toggleFilterPopup()" id="filter-btn" style="margin-left:8px;">Filter</button>
+  <button class="btn btn-sm btn-secondary" id="mark-mode-btn" onclick="toggleMarkMode()" style="margin-left:4px;">Mark</button>
+</div>
+
+<div id="mark-actions">
+  <span id="mark-count">0 selected</span>
+  <button class="btn btn-sm btn-secondary" onclick="clearMarkedSelection()">Clear Selection</button>
+  <button class="btn btn-sm" onclick="clearLabelsMarked()">Clear Labels</button>
+  <button class="btn btn-sm" style="background:#c0392b" onclick="deleteMarked()">Delete</button>
 </div>
 
 <div id="main-container">
@@ -243,7 +256,9 @@ body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; hei
       Shift+Arrows → Move 5px<br>
       E/Enter → Expand image<br>
       Space → Save page & next<br>
-      PgUp/PgDn → Navigate pages
+      PgUp/PgDn → Navigate pages<br>
+      M → Toggle mark mode<br>
+      Esc → Exit mark mode
     </div>
   </div>
 </div>
@@ -376,6 +391,8 @@ let autoSaveTimeout = null;
 let autoSavePending = null;
 let saveQueue = [];
 let saveQueueProcessing = false;
+let markMode = false;
+let markedItems = new Set();
 
 // Dataset structure
 let datasetStructure = 'flat'; // 'split', 'flat', 'same'
@@ -1505,11 +1522,14 @@ function createGridItem(index, w, h, fullWidthMode = false) {
   const isEditing = editInGrid && index === gridEditIndex;
   const isDone = progress.completed.includes(path);
   
+  const isMarked = markMode && markedItems.has(path);
+
   const item = document.createElement('div');
-  item.className = 'grid-item' + (isSelected ? ' selected' : '') + (isEditing ? ' editing' : '');
+  item.className = 'grid-item' + (isSelected ? ' selected' : '') + (isEditing ? ' editing' : '') + (isMarked ? ' marked' : '');
   item.dataset.index = index;
   if (fullWidthMode) item.dataset.fullWidth = 'true';
   item.onclick = (e) => {
+    if (markMode) { toggleMark(index); return; }
     if (editInGrid) return;
     selectItem(index);
     openModal(index);
@@ -2655,6 +2675,99 @@ function updateGridCursor(e, index) {
   }
 }
 
+function toggleMarkMode() {
+  markMode = !markMode;
+  if (!markMode) markedItems.clear();
+  document.getElementById('mark-mode-btn').classList.toggle('active', markMode);
+  updateMarkActions();
+  renderGrid();
+}
+
+function toggleMark(index) {
+  const path = images[index];
+  if (markedItems.has(path)) markedItems.delete(path);
+  else markedItems.add(path);
+  updateMarkActions();
+  const item = document.querySelector(`.grid-item[data-index="${index}"]`);
+  if (item) item.classList.toggle('marked', markedItems.has(path));
+}
+
+function clearMarkedSelection() {
+  markedItems.clear();
+  updateMarkActions();
+  renderGrid();
+}
+
+function updateMarkActions() {
+  const bar = document.getElementById('mark-actions');
+  const count = markedItems.size;
+  bar.classList.toggle('visible', count > 0);
+  document.getElementById('mark-count').textContent = count + ' selected';
+}
+
+async function deleteMarked() {
+  const count = markedItems.size;
+  if (count === 0) return;
+  if (!confirm(`Delete ${count} images and their labels?`)) return;
+  try {
+    const items = Array.from(markedItems);
+    const resp = await fetch('/delete_batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items, dataset_base: datasetBase, structure: datasetStructure })
+    });
+    const result = await resp.json();
+    if (result.ok) {
+      for (const path of result.deleted) {
+        const allIdx = allImages.indexOf(path);
+        if (allIdx >= 0) allImages.splice(allIdx, 1);
+        const idx = images.indexOf(path);
+        if (idx >= 0) images.splice(idx, 1);
+        delete imageCache[path];
+        const cIdx = progress.completed.indexOf(path);
+        if (cIdx >= 0) progress.completed.splice(cIdx, 1);
+      }
+      markedItems.clear();
+      if (selectedIndex >= images.length) selectedIndex = images.length - 1;
+      if (currentPage * perPage >= images.length && currentPage > 0) currentPage--;
+      updateMarkActions();
+      renderGrid();
+      updatePagination();
+      setStatus(`Deleted ${result.deleted.length} items`, 'ok');
+    }
+  } catch (err) {
+    setStatus('Batch delete failed: ' + err.message, 'error');
+  }
+}
+
+async function clearLabelsMarked() {
+  const count = markedItems.size;
+  if (count === 0) return;
+  if (!confirm(`Clear labels from ${count} images?`)) return;
+  try {
+    const items = Array.from(markedItems);
+    const resp = await fetch('/clear_labels_batch', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items, dataset_base: datasetBase, structure: datasetStructure })
+    });
+    const result = await resp.json();
+    if (result.ok) {
+      for (const path of result.cleared) {
+        if (imageCache[path]) imageCache[path].regions = [];
+        const cIdx = progress.completed.indexOf(path);
+        if (cIdx >= 0) progress.completed.splice(cIdx, 1);
+      }
+      markedItems.clear();
+      updateMarkActions();
+      renderGrid();
+      setStatus(`Cleared labels from ${result.cleared.length} images`, 'ok');
+    }
+  } catch (err) {
+    setStatus('Batch clear failed: ' + err.message, 'error');
+  }
+}
+
 // Modal
 async function deleteEntry(index) {
   if (index < 0 || index >= images.length) return;
@@ -3351,15 +3464,15 @@ document.addEventListener('keydown', e => {
   const key = e.key.toLowerCase();
   
   if (e.key === 'Escape') {
+    if (markMode) { toggleMarkMode(); return; }
     if (modalOpen) closeModal();
     else if (drawingClass) { drawingClass = null; updateModeIndicator(); }
     return;
   }
-  
-  if ((e.key === 'Delete' || e.key === 'Backspace') && e.ctrlKey) {
+
+  if (key === 'm' && !e.ctrlKey && !e.altKey && !modalOpen && !editInGrid) {
     e.preventDefault();
-    const idx = modalOpen ? modalIndex : selectedIndex;
-    if (idx >= 0) deleteEntry(idx);
+    toggleMarkMode();
     return;
   }
 
