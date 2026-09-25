@@ -176,13 +176,13 @@ body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; hei
     <label>Grid:</label>
     <input type="number" id="grid-cols" value="4" min="1" max="10" style="width:50px;" onchange="updateGrid(); saveSettings()">
     <span>×</span>
-    <input type="number" id="grid-rows" value="3" min="1" max="10" style="width:50px;" onchange="updateGrid()">
+    <input type="number" id="grid-rows" value="3" min="1" max="10" style="width:50px;" onchange="updateGrid(); saveSettings()">
   </div>
   <div class="setting-group">
     <label><input type="checkbox" id="full-width-mode" onchange="updateGrid(); saveSettings()"> Full width</label>
   </div>
   <div class="setting-group">
-    <label><input type="checkbox" id="paginate-grid" checked onchange="updateGrid()"> Paginate</label>
+    <label><input type="checkbox" id="paginate-grid" checked onchange="updateGrid(); saveSettings()"> Paginate</label>
   </div>
   <div class="setting-group">
     <label><input type="checkbox" id="auto-detect" onchange="saveSettings()"> Auto-detect</label>
@@ -200,6 +200,15 @@ body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; hei
   <div class="setting-group">
     <label>Opacity: <span id="opacity-value">75%</span></label>
     <input type="range" id="region-opacity" min="0" max="100" value="75" style="width:80px;vertical-align:middle;margin-left:4px;" onchange="updateOpacity(); saveSettings()" oninput="updateOpacity()">
+  </div>
+  <div class="setting-group" title="Visibility of the diagonal lines inside boxes: opacity and thickness">
+    <label>Lines: <span id="stripe-value">15%</span></label>
+    <input type="range" id="stripe-strength" min="0" max="100" value="15" style="width:80px;vertical-align:middle;margin-left:4px;" onchange="updateStripes(); saveSettings()" oninput="updateStripes()">
+    <select id="stripe-style" title="Line style inside boxes" style="margin-left:4px;font-size:11px;" onchange="updateStripes(); saveSettings()">
+      <option value="color">color</option>
+      <option value="white" selected>white</option>
+      <option value="black">black</option>
+    </select>
   </div>
   <div class="setting-group">
     <label><input type="checkbox" id="edit-in-grid" onchange="toggleEditInGrid(); saveSettings()"> Edit in grid</label>
@@ -221,7 +230,20 @@ body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; hei
   <button class="btn btn-sm" onclick="saveAllOnPage()">Save Page</button>
   <button class="btn btn-sm btn-secondary" onclick="saveAllUnsavedDetected()" title="Save all images with unsaved detections">Save Detected</button>
   <label style="margin-left:8px;font-size:12px;"><input type="checkbox" id="only-with-regions" onchange="saveSettings()"> Only with regions</label>
-  <label style="margin-left:8px;font-size:12px;" title="Off: the whole overlapping boxes pulse. On: only the intersection area is highlighted (animated)."><input type="checkbox" id="overlap-area-mode" onchange="saveSettings()"> Overlap: area</label>
+  <label style="margin-left:8px;font-size:12px;" title="What counts as an overlap. any: boxes intersect at all; >50% / >90%: intersection covers more than that share of the smaller box; full: one box lies entirely inside the other">Overlap:
+    <select id="overlap-mode" onchange="saveSettings(); redrawOverlaps()" style="font-size:11px;">
+      <option value="none">none</option>
+      <option value="any" selected>any</option>
+      <option value="p50">&gt;50%</option>
+      <option value="p90">&gt;90%</option>
+      <option value="full">full</option>
+    </select></label>
+  <label style="margin-left:4px;font-size:12px;" title="What to highlight. frame: border of the overlapping boxes; area: only the intersection; box: the whole overlapping boxes">show:
+    <select id="overlap-show" onchange="saveSettings(); redrawOverlaps()" style="font-size:11px;">
+      <option value="frame">frame</option>
+      <option value="area" selected>area</option>
+      <option value="box">box</option>
+    </select></label>
   <button class="btn btn-sm btn-secondary" onclick="toggleFilterPopup()" id="filter-btn" style="margin-left:8px;">Filter</button>
   <button class="btn btn-sm btn-secondary" id="mark-mode-btn" onclick="toggleMarkMode()" style="margin-left:4px;">Mark</button>
 </div>
@@ -247,7 +269,7 @@ body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; hei
     <div class="help-text">
       <b>Shortcuts:</b><br>
       Hotkey → Draw class<br>
-      Ctrl+Alt+Hotkey → Change class<br>
+      Shift+Hotkey → Change class<br>
       Ctrl+Drag → Clone region<br>
       Shift+Drag → Lock H/V axis<br>
       R → Run detection<br>
@@ -863,24 +885,44 @@ async function loadDataset() {
   }
 }
 
+function hotkeyOf(e) {
+  const m = /^(?:Key([A-Z])|Digit(\d)|Numpad(\d))$/.exec(e.code || '');
+  if (m) return (m[1] || m[2] || m[3]).toLowerCase();
+  return e.shiftKey ? '' : e.key.toLowerCase(); // other keys only unshifted
+}
+// e r z m, space are taken by built-in shortcuts
+const HOTKEY_CHARS = '1234567890qwtyuiopasdfghjklxcvbn';
+
 function loadHotkeys() {
-  const saved = localStorage.getItem(`yoloLabelerHotkeys_${yamlPath}`);
-  if (saved) {
-    hotkeys = JSON.parse(saved);
-  } else {
-    // Auto-assign hotkeys
-    const keys = '1234567890qwertyuiopasdfghjklzxcvbnm';
-    hotkeys = {};
-    Object.values(classNames).forEach((name, i) => {
-      if (i < keys.length) {
-        hotkeys[keys[i]] = name;
-      }
-    });
+  let saved = null, global = {};
+  try { saved = JSON.parse(localStorage.getItem(`yoloLabelerHotkeys_${yamlPath}`)); } catch (e) {}
+  try { global = JSON.parse(localStorage.getItem('yoloLabelerHotkeysGlobal')) || {}; } catch (e) {}
+  const names = new Set(Object.values(classNames));
+  hotkeys = {};
+  // this dataset's keys first, then keys used for the same class name in other datasets
+  for (const src of [saved || {}, global]) {
+    for (const [k, name] of Object.entries(src)) {
+      if (names.has(name) && !(k in hotkeys) && !Object.values(hotkeys).includes(name)) hotkeys[k] = name;
+    }
   }
+  // classes still without a key (new dataset / newly added class) get the first free one
+  const keys = HOTKEY_CHARS;
+  Object.values(classNames).forEach(name => {
+    if (Object.values(hotkeys).includes(name)) return;
+    const k = [...keys].find(c => !(c in hotkeys));
+    if (k) hotkeys[k] = name;
+  });
 }
 
 function saveHotkeys() {
-  localStorage.setItem(`yoloLabelerHotkeys_${yamlPath}`, JSON.stringify(hotkeys));
+  try {
+    localStorage.setItem(`yoloLabelerHotkeys_${yamlPath}`, JSON.stringify(hotkeys));
+    let global = {};
+    try { global = JSON.parse(localStorage.getItem('yoloLabelerHotkeysGlobal')) || {}; } catch (e) {}
+    const mine = new Set(Object.values(hotkeys));
+    for (const [k, name] of Object.entries(global)) if (mine.has(name) || k in hotkeys) delete global[k];
+    localStorage.setItem('yoloLabelerHotkeysGlobal', JSON.stringify({...global, ...hotkeys}));
+  } catch (e) {}
 }
 
 let countedClasses = new Set();
@@ -890,6 +932,21 @@ let regionOpacity = 0.75;
 let unsavedDetected = new Set();
 let animationPhase = 0;
 let animationRunning = false;
+
+let stripeStrength = 0.15; // 0..1: stripe alpha, and thickness 1..4 px
+let stripeStyle = 'white';   // color | white | black: colour of the (solid) diagonal lines
+
+function updateStripes() {
+  const val = parseInt(document.getElementById('stripe-strength').value);
+  stripeStrength = val / 100;
+  stripeStyle = document.getElementById('stripe-style').value;
+  document.getElementById('stripe-value').textContent = val + '%';
+  if (modalOpen) {
+    renderModal();
+  } else {
+    redrawAllGridCanvases();
+  }
+}
 
 function updateOpacity() {
   const val = parseInt(document.getElementById('region-opacity').value);
@@ -1009,7 +1066,7 @@ async function addClass(className) {
     classNames[newIdx] = className;
     const colArr = genColors(Object.keys(classNames).length);
     colors[className] = colArr[newIdx];
-    const keys = '1234567890qwertyuiopasdfghjklzxcvbnm';
+    const keys = HOTKEY_CHARS;
     const usedKeys = new Set(Object.keys(hotkeys));
     for (const k of keys) {
       if (!usedKeys.has(k)) {
@@ -1282,9 +1339,9 @@ async function loadLabelCache() {
     const resp = await fetch(`/load_cache?base=${encodeURIComponent(datasetBase)}`);
     labelCache = await resp.json();
     
-    // Apply saved settings
-    if (labelCache.settings) {
-      const s = labelCache.settings;
+    // Apply saved settings: per-dataset (server) first, global (browser) view settings on top
+    const s = {...(labelCache.settings || {}), ...loadGlobalSettings()};
+    if (Object.keys(s).length) {
       if (s.modelPath) {
         document.getElementById('model-path').value = s.modelPath;
       }
@@ -1301,15 +1358,25 @@ async function loadLabelCache() {
       if (s.deselectAfterDraw !== undefined) {
         document.getElementById('deselect-after-draw').checked = s.deselectAfterDraw;
       }
-      if (s.overlapAreaMode !== undefined) {
-        document.getElementById('overlap-area-mode').checked = s.overlapAreaMode;
-      }
+      // older settings kept the highlight style in overlapMode (box/area) or in the overlapAreaMode checkbox
+      let om = s.overlapMode, os = s.overlapShow;
+      if (om === undefined && s.overlapAreaMode !== undefined) om = s.overlapAreaMode ? 'area' : 'box';
+      if (om === 'box' || om === 'area') { os = os || om; om = 'any'; }
+      if (om !== undefined) document.getElementById('overlap-mode').value = om;
+      if (os !== undefined) document.getElementById('overlap-show').value = os;
       if (s.enableZoom !== undefined) {
         document.getElementById('enable-zoom').checked = s.enableZoom;
       }
       if (s.zoomSize !== undefined) {
         document.getElementById('zoom-size').value = s.zoomSize;
         updateZoomSize();
+      }
+      if (s.stripeStyle !== undefined) {
+        document.getElementById('stripe-style').value = s.stripeStyle === 'solid' ? 'white' : s.stripeStyle;
+      }
+      if (s.stripeStrength !== undefined) {
+        document.getElementById('stripe-strength').value = s.stripeStrength;
+        updateStripes();
       }
       if (s.regionOpacity !== undefined) {
         document.getElementById('region-opacity').value = s.regionOpacity;
@@ -1342,10 +1409,24 @@ async function loadLabelCache() {
       if (s.fullWidthMode !== undefined) {
         document.getElementById('full-width-mode').checked = s.fullWidthMode;
       }
+      if (s.gridRows) {
+        document.getElementById('grid-rows').value = s.gridRows;
+      }
+      if (s.paginateGrid !== undefined) {
+        document.getElementById('paginate-grid').checked = s.paginateGrid;
+      }
     }
   } catch (e) {
     labelCache = { completed: [] };
   }
+}
+
+// Settings that follow the dataset; everything else (view, grid, highlight, class colours/toggles) is global
+const DATASET_ONLY_SETTINGS = ['modelPath', 'autoDetect', 'autosaveOnDetect'];
+const GLOBAL_SETTINGS_KEY = 'yoloLabelerSettings';
+
+function loadGlobalSettings() {
+  try { return JSON.parse(localStorage.getItem(GLOBAL_SETTINGS_KEY)) || {}; } catch (e) { return {}; }
 }
 
 async function saveSettings() {
@@ -1359,15 +1440,23 @@ async function saveSettings() {
     enableZoom: document.getElementById('enable-zoom').checked,
     zoomSize: document.getElementById('zoom-size').value,
     regionOpacity: document.getElementById('region-opacity').value,
+    stripeStrength: document.getElementById('stripe-strength').value,
+    stripeStyle: document.getElementById('stripe-style').value,
     onlyWithRegions: document.getElementById('only-with-regions').checked,
-    overlapAreaMode: document.getElementById('overlap-area-mode').checked,
+    overlapMode: document.getElementById('overlap-mode').value,
+    overlapShow: document.getElementById('overlap-show').value,
     countedClasses: Array.from(countedClasses),
     hiddenTintClasses: Array.from(hiddenTintClasses),
     ignoreOverlapClasses: Array.from(ignoreOverlapClasses),
     gridCols: document.getElementById('grid-cols').value,
     fullWidthMode: document.getElementById('full-width-mode').checked,
+    gridRows: document.getElementById('grid-rows').value,
+    paginateGrid: document.getElementById('paginate-grid').checked,
     customColors: customColors
   };
+  const globalSettings = {...settings};
+  DATASET_ONLY_SETTINGS.forEach(k => delete globalSettings[k]);
+  try { localStorage.setItem(GLOBAL_SETTINGS_KEY, JSON.stringify(globalSettings)); } catch (e) {}
   try {
     await fetch('/save_settings', {
       method: 'POST',
@@ -1472,6 +1561,7 @@ function updateProgress() {
 
 function renderGrid() {
   stopAnimation();
+  animatedGridItems.clear();
   const grid = document.getElementById('grid');
   grid.innerHTML = '';
   
@@ -1660,6 +1750,7 @@ async function loadThumbnailFullWidth(index, item, availableWidth, itemCount) {
     }
     
     drawRegions(ctx, regions || [], 0, 0, w, h, false);
+    if (lastDrawAnimated) animatedGridItems.add(index); else animatedGridItems.delete(index);
     
     updateGridItemCounts(index);
     if (countedClasses.size > 0) {
@@ -1716,6 +1807,7 @@ async function loadThumbnail(index, canvas) {
     }
     
     drawRegions(ctx, regions || [], x, y, w, h, false);
+    if (lastDrawAnimated) animatedGridItems.add(index); else animatedGridItems.delete(index);
     
     // Update item and page label counts
     updateGridItemCounts(index);
@@ -1750,9 +1842,20 @@ function isUnknownClass(className) {
   return !Object.values(classNames).includes(className);
 }
 
-function overlapAreaMode() {
-  const el = document.getElementById('overlap-area-mode');
-  return !!(el && el.checked);
+function overlapMode() {
+  const el = document.getElementById('overlap-mode');
+  return el ? el.value : 'area';
+}
+const OVERLAP_MIN_SHARE = {p50: 0.5, p90: 0.9, full: 0.98}; // intersection / smaller box area
+function redrawOverlaps() {
+  if (modalOpen) renderModal(); else redrawAllGridCanvases();
+}
+function overlapShow() { // frame | area | box
+  const el = document.getElementById('overlap-show');
+  return el ? el.value : 'area';
+}
+function overlapAreaMode() { // intersection-only drawing
+  return overlapMode() !== 'none' && overlapShow() === 'area';
 }
 
 // Intersection rectangles (normalized cx,cy,w,h -> x1,y1,x2,y2) for every overlapping pair
@@ -1766,32 +1869,52 @@ function findOverlapRects(regions) {
       const x2 = Math.min(a.box[0] + a.box[2]/2, b.box[0] + b.box[2]/2);
       const y1 = Math.max(a.box[1] - a.box[3]/2, b.box[1] - b.box[3]/2);
       const y2 = Math.min(a.box[1] + a.box[3]/2, b.box[1] + b.box[3]/2);
-      if (x2 > x1 && y2 > y1) rects.push([x1, y1, x2, y2]);
+      if (!(x2 > x1 && y2 > y1)) continue;
+      const minShare = OVERLAP_MIN_SHARE[overlapMode()];
+      if (minShare) {
+        const inter = (x2 - x1) * (y2 - y1);
+        const smaller = Math.min(a.box[2] * a.box[3], b.box[2] * b.box[3]);
+        if (inter < minShare * smaller) continue; // 'full' (0.98): one box lies entirely inside the other
+      }
+      rects.push([x1, y1, x2, y2, a.class, b.class, i, j]);
     }
   }
   return rects;
 }
 
-// Area mode: pulsing two-colour fill + marching-ants border + corner ticks on the intersection only
+// Area mode: the intersection flashes between the two classes' colours, heavy glowing outline, marching ants
 function drawOverlapAreas(ctx, rects, ox, oy, iw, ih, lineScale) {
-  const t = 0.5 + 0.5 * Math.sin(animationPhase * 1.5);
-  rects.forEach(([x1, y1, x2, y2]) => {
+  const t = 0.5 + 0.5 * Math.sin(animationPhase * 1.6); // smooth 0..1..0: colours blend, no jump
+  const glow = 0.5 + 0.5 * Math.sin(animationPhase * 3.2);
+  const hex = c => (c && c.startsWith('hsl')) ? hslToHex(c) : c;
+  rects.forEach(([x1, y1, x2, y2, ca, cb]) => {
     const rx = ox + x1 * iw, ry = oy + y1 * ih, rw = (x2 - x1) * iw, rh = (y2 - y1) * ih;
+    const colA = hex(colors[ca]) || '#ff00ff', colB = hex(colors[cb]) || '#ffea00';
+    const fill = lerpColor(colA, colB, t), other = lerpColor(colB, colA, t);
     ctx.save();
-    ctx.globalAlpha = 0.35 + 0.45 * t;
-    ctx.fillStyle = t > 0.5 ? '#ff00ff' : '#ffea00';
+    ctx.globalAlpha = 0.8;
+    ctx.fillStyle = fill;
     ctx.fillRect(rx, ry, rw, rh);
     ctx.globalAlpha = 1;
-    ctx.lineWidth = 3 / lineScale;
-    ctx.setLineDash([6 / lineScale, 4 / lineScale]);
-    ctx.lineDashOffset = -animationPhase * 12 / lineScale;
+    // outer black halo so it reads on any background
+    ctx.lineWidth = 7 / lineScale;
     ctx.strokeStyle = '#000';
     ctx.strokeRect(rx, ry, rw, rh);
-    ctx.lineDashOffset = -animationPhase * 12 / lineScale + 5 / lineScale;
+    // glowing inner border in the other class' colour
+    ctx.shadowColor = other;
+    ctx.shadowBlur = 6 + 10 * glow;
+    ctx.lineWidth = 4 / lineScale;
+    ctx.strokeStyle = other;
+    ctx.strokeRect(rx, ry, rw, rh);
+    ctx.shadowBlur = 0;
+    // marching ants on top
+    ctx.lineWidth = 2 / lineScale;
+    ctx.setLineDash([6 / lineScale, 5 / lineScale]);
+    ctx.lineDashOffset = -animationPhase * 14 / lineScale;
     ctx.strokeStyle = '#fff';
     ctx.strokeRect(rx, ry, rw, rh);
     ctx.setLineDash([]);
-    const k = Math.min(10 / lineScale, rw / 2, rh / 2);
+    const k = Math.min(12 / lineScale, rw / 2, rh / 2);
     ctx.strokeStyle = '#ff2d2d';
     ctx.lineWidth = 3 / lineScale;
     [[rx, ry, 1, 1], [rx + rw, ry, -1, 1], [rx, ry + rh, 1, -1], [rx + rw, ry + rh, -1, -1]].forEach(([cx, cy, dx, dy]) => {
@@ -1801,22 +1924,9 @@ function drawOverlapAreas(ctx, rects, ox, oy, iw, ih, lineScale) {
   });
 }
 
-function findOverlaps(regions) {
+function findOverlaps(regions) { // indices of boxes in any overlap that passes the current criterion
   const overlapping = new Set();
-  for (let i = 0; i < regions.length; i++) {
-    for (let j = i + 1; j < regions.length; j++) {
-      const a = regions[i], b = regions[j];
-      if (ignoreOverlapClasses.has(a.class) || ignoreOverlapClasses.has(b.class)) continue;
-      const ax1 = a.box[0] - a.box[2]/2, ax2 = a.box[0] + a.box[2]/2;
-      const ay1 = a.box[1] - a.box[3]/2, ay2 = a.box[1] + a.box[3]/2;
-      const bx1 = b.box[0] - b.box[2]/2, bx2 = b.box[0] + b.box[2]/2;
-      const by1 = b.box[1] - b.box[3]/2, by2 = b.box[1] + b.box[3]/2;
-      if (ax1 < bx2 && ax2 > bx1 && ay1 < by2 && ay2 > by1) {
-        overlapping.add(i);
-        overlapping.add(j);
-      }
-    }
-  }
+  findOverlapRects(regions).forEach(r => { overlapping.add(r[6]); overlapping.add(r[7]); });
   return overlapping;
 }
 
@@ -1956,19 +2066,24 @@ function hexToRgb(hex) {
   } : null;
 }
 
+let animationGen = 0; // each loop owns a generation: stop+start in one tick must not leave the old loop running
 function startAnimation() {
   if (animationRunning) return;
   animationRunning = true;
+  const gen = ++animationGen;
   
-  function animate() {
-    if (!animationRunning) return;
-    animationPhase = (animationPhase + 0.08) % (Math.PI * 2);
-    
-    // Redraw current view
+  let lastTick = 0;
+  function animate(now) {
+    if (!animationRunning || gen !== animationGen) return;
+    if (now - lastTick < 33) { requestAnimationFrame(animate); return; } // ~30 fps is plenty for pulsing
+    animationPhase = (animationPhase + 0.16 * Math.min(3, (now - lastTick) / 33 || 1)) % (Math.PI * 2); // same speed as the old 0.08 @ 60fps
+    lastTick = now;
+
+    // Redraw current view: only what actually animates
     if (modalOpen) {
       renderModalCanvas();
     } else {
-      redrawVisibleGridItems();
+      redrawVisibleGridItems(true);
     }
     requestAnimationFrame(animate);
   }
@@ -1977,14 +2092,23 @@ function startAnimation() {
 
 function stopAnimation() {
   animationRunning = false;
+  animationGen++;
 }
 
-function redrawVisibleGridItems() {
+let lastDrawAnimated = false;       // set by drawRegionsBase: did the last draw contain animated highlights
+const animatedGridItems = new Set();  // grid indices whose regions animate
+
+function redrawVisibleGridItems(animatedOnly = false) {
   const grid = document.getElementById('grid');
   const items = grid.querySelectorAll('.grid-item');
   items.forEach(item => {
     const idx = parseInt(item.dataset.index);
-    if (!isNaN(idx)) redrawGridCanvas(idx);
+    if (isNaN(idx) || (animatedOnly && !animatedGridItems.has(idx) && !(editInGrid && gridEditIndex === idx))) return;
+    if (animatedOnly) { // off-screen items don't need the pulse
+      const r = item.getBoundingClientRect();
+      if (r.bottom < 0 || r.top > window.innerHeight) return;
+    }
+    redrawGridCanvas(idx);
   });
   
   // Redraw zoom window if visible
@@ -2028,23 +2152,26 @@ function drawRegions(ctx, regions, ox, oy, iw, ih, showHandles, selectedIdx = -1
 function drawRegionsBase(ctx, regions, ox, oy, iw, ih, showHandles, selectedIdx = -1, lineScale = 1) {
   const areaMode = overlapAreaMode();
   const overlapRects = areaMode ? findOverlapRects(regions) : [];
-  const overlaps = areaMode ? new Set() : findOverlaps(regions);
+  const overlaps = (areaMode || overlapMode() === 'none') ? new Set() : findOverlaps(regions);
+  const overlapFill = overlapShow() === 'box'; // 'frame' highlights the border only
   if (overlapRects.length && !animationRunning) startAnimation();
   const touchingEdges = findTouchingEdges(regions, iw, ih);
   const boundaryEdges = findBoundaryEdges(regions);
   
   // Track if this draw has animated elements
+  lastDrawAnimated = touchingEdges.size > 0 || boundaryEdges.size > 0 || overlaps.size > 0 || overlapRects.length > 0;
   if (touchingEdges.size > 0 || boundaryEdges.size > 0 || overlaps.size > 0) {
     if (!animationRunning) startAnimation();
   }
   
   // Breathing opacity for overlaps (subtle pulse between 0.3 and 0.55)
   const breathe = 0.5 + 0.5 * Math.sin(animationPhase);
-  const overlapPulse = 0.3 + 0.25 * breathe;
+  const overlapPulse = 0.35 + 0.55 * breathe;
   
   regions.forEach((r, i) => {
     const unknown = isUnknownClass(r.class);
-    const hasOverlap = overlaps.has(i);
+    const overlapBorder = overlaps.has(i);
+    const hasOverlap = overlapBorder && overlapFill;
     const color = unknown ? '#000' : (colors[r.class] || '#888');
     
     const rx = ox + (r.box[0] - r.box[2]/2) * iw;
@@ -2067,8 +2194,8 @@ function drawRegionsBase(ctx, regions, ox, oy, iw, ih, showHandles, selectedIdx 
       // Use region index for consistent angle (doesn't change during move/resize)
       const angle = (i % 4) * 45 + 22.5; // 22.5, 67.5, 112.5, or 157.5 degrees
       const radians = angle * Math.PI / 180;
-      const stripeColor = unknown ? 'rgba(255,0,0,0.6)' : (hasOverlap ? `rgba(255,255,255,${overlapPulse})` : 'rgba(255,255,255,0.15)');
-      const stripeWidth = (unknown ? 3 : (hasOverlap ? 2 : 1)) / lineScale;
+      const stripeColor = unknown ? 'rgba(255,0,0,0.6)' : (hasOverlap ? `rgba(255,255,255,${overlapPulse})` : `rgba(255,255,255,${stripeStrength})`);
+      const stripeWidth = (unknown ? 3 : (hasOverlap ? 3 : 1 + 3 * stripeStrength)) / lineScale;
       const stripeSpacing = (unknown ? 6 : (hasOverlap ? 7 : 8)) / lineScale;
       
       ctx.save();
@@ -2084,16 +2211,18 @@ function drawRegionsBase(ctx, regions, ox, oy, iw, ih, showHandles, selectedIdx 
       const cx = rx + rw/2;
       const cy = ry + rh/2;
       
-      for (let d = -diag; d < diag; d += stripeSpacing) {
-        const x1 = cx + d * cos - diag * sin;
-        const y1 = cy + d * sin + diag * cos;
-        const x2 = cx + d * cos + diag * sin;
-        const y2 = cy + d * sin - diag * cos;
-        ctx.beginPath();
-        ctx.moveTo(x1, y1);
-        ctx.lineTo(x2, y2);
-        ctx.stroke();
+      if (!unknown && !hasOverlap) { // plain boxes: line colour from the selector, visibility from the Lines slider
+        ctx.globalAlpha = stripeStrength;
+        ctx.strokeStyle = stripeStyle === 'color' ? (color.startsWith('hsl') ? hslToHex(color) : color)
+                        : stripeStyle === 'black' ? '#000' : '#fff';
       }
+      ctx.beginPath(); // all stripes of this box in ONE path: one stroke, not one per line
+      for (let d = -diag; d < diag; d += stripeSpacing) {
+        ctx.moveTo(cx + d * cos - diag * sin, cy + d * sin + diag * cos);
+        ctx.lineTo(cx + d * cos + diag * sin, cy + d * sin - diag * cos);
+      }
+      ctx.stroke();
+      ctx.globalAlpha = 1;
       ctx.restore();
       
       // Extra cross-hatch for unknown regions
@@ -2108,19 +2237,27 @@ function drawRegionsBase(ctx, regions, ox, oy, iw, ih, showHandles, selectedIdx 
         ctx.clip();
         ctx.strokeStyle = 'rgba(255,0,0,0.6)';
         ctx.lineWidth = stripeWidth;
+        ctx.beginPath();
         for (let d = -diag; d < diag; d += stripeSpacing) {
-          ctx.beginPath();
           ctx.moveTo(cx + d * cos2 - diag * sin2, cy + d * sin2 + diag * cos2);
           ctx.lineTo(cx + d * cos2 + diag * sin2, cy + d * sin2 - diag * cos2);
-          ctx.stroke();
         }
+        ctx.stroke();
         ctx.restore();
       }
     }
     
     // Border
-    ctx.strokeStyle = unknown ? '#ff0000' : (hasOverlap ? '#ffffff' : color);
-    ctx.lineWidth = (i === selectedIdx ? 2.5 : (unknown ? 2 : (hasOverlap ? 1.5 : 1))) / lineScale;
+    if (overlapBorder && !hasOverlap && !unknown) { // frame mode: black halo + pulsing white border
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = 7 / lineScale;
+      ctx.strokeRect(rx, ry, rw, rh);
+      ctx.strokeStyle = lerpColor(color.startsWith('hsl') ? hslToHex(color) : color, '#ffffff', breathe);
+      ctx.lineWidth = (2 + 2 * breathe) / lineScale;
+    } else {
+      ctx.strokeStyle = unknown ? '#ff0000' : (hasOverlap ? '#ffffff' : color);
+      ctx.lineWidth = (i === selectedIdx ? 2.5 : (unknown ? 2 : (hasOverlap ? 1.5 : 1))) / lineScale;
+    }
     ctx.strokeRect(rx, ry, rw, rh);
     
     // Touching edges highlight - animated border transition to white
@@ -2521,7 +2658,8 @@ function redrawGridCanvas(index) {
   const regions = isEditing ? gridEditRegions : (cached.regions || []);
   const selectedIdx = isEditing ? gridEditSelectedIdx : -1;
   drawRegions(ctx, regions, coords.x, coords.y, coords.w, coords.h, isEditing, selectedIdx);
-  
+  if (lastDrawAnimated) animatedGridItems.add(index); else animatedGridItems.delete(index);
+
   // Draw clone preview (only for edited item)
   if (isEditing && gridClonePreview) {
     const p = gridClonePreview;
@@ -3347,6 +3485,7 @@ async function runGridDetection(index) {
           ctx.fillRect(0, 0, canvas.width, canvas.height);
           ctx.drawImage(cached.img, coords.x, coords.y, coords.w, coords.h);
           drawRegions(ctx, detected, coords.x, coords.y, coords.w, coords.h, false);
+          if (lastDrawAnimated) animatedGridItems.add(index); else animatedGridItems.delete(index);
         }
       }
     }
@@ -3665,6 +3804,12 @@ document.addEventListener('keydown', e => {
   }
   
   const key = e.key.toLowerCase();
+  const hk = hotkeyOf(e);
+  if (e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && hotkeys[hk]) {
+    e.preventDefault();
+    changeSelectedClass(hotkeys[hk]);
+    return;
+  }
   
   if (e.key === 'Escape') {
     if (markMode) { toggleMarkMode(); return; }
@@ -3773,14 +3918,10 @@ document.addEventListener('keydown', e => {
     return;
   }
 
-  // Hotkey - with Ctrl+Alt changes class, without modifiers draws
-  if (hotkeys[key]) {
+  // Hotkey without modifiers draws (Shift+hotkey = change class, handled above)
+  if (hotkeys[hk] && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
     e.preventDefault();
-    if (e.ctrlKey && e.altKey) {
-      changeSelectedClass(hotkeys[key]);
-    } else {
-      setDrawingClass(hotkeys[key]);
-    }
+    setDrawingClass(hotkeys[hk]);
     return;
   }
 });
@@ -3800,8 +3941,9 @@ document.addEventListener('mousemove', e => {
 // Hotkey input
 document.getElementById('hotkey-input').addEventListener('keydown', e => {
   e.preventDefault();
-  if (e.key !== 'Escape' && e.key !== 'Enter' && e.key.length === 1) {
-    document.getElementById('hotkey-input').value = e.key.toLowerCase();
+  const k = hotkeyOf(e);
+  if (e.key !== 'Escape' && e.key !== 'Enter' && k.length === 1 && k !== ' ') {
+    document.getElementById('hotkey-input').value = k;
   }
 });
 
