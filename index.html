@@ -221,6 +221,7 @@ body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; hei
   <button class="btn btn-sm" onclick="saveAllOnPage()">Save Page</button>
   <button class="btn btn-sm btn-secondary" onclick="saveAllUnsavedDetected()" title="Save all images with unsaved detections">Save Detected</button>
   <label style="margin-left:8px;font-size:12px;"><input type="checkbox" id="only-with-regions" onchange="saveSettings()"> Only with regions</label>
+  <label style="margin-left:8px;font-size:12px;" title="Off: the whole overlapping boxes pulse. On: only the intersection area is highlighted (animated)."><input type="checkbox" id="overlap-area-mode" onchange="saveSettings()"> Overlap: area</label>
   <button class="btn btn-sm btn-secondary" onclick="toggleFilterPopup()" id="filter-btn" style="margin-left:8px;">Filter</button>
   <button class="btn btn-sm btn-secondary" id="mark-mode-btn" onclick="toggleMarkMode()" style="margin-left:4px;">Mark</button>
 </div>
@@ -269,10 +270,17 @@ body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; hei
 <div id="filter-overlay" class="popup-overlay" onclick="if(event.target===this)toggleFilterPopup()">
   <div class="popup-content" style="width:450px;">
     <div class="popup-header">
-      <span>Filter by Filename</span>
+      <span>Filter</span>
       <button class="popup-close" onclick="toggleFilterPopup()">×</button>
     </div>
-    <textarea id="filter-names" placeholder="Enter filenames (one per line)&#10;Matches by substring in filename" rows="15" style="width:100%;background:#0a0a0a;color:#fff;border:1px solid #333;border-radius:3px;font-size:12px;resize:vertical;font-family:monospace;padding:8px;box-sizing:border-box;"></textarea>
+    <div style="font-size:12px;color:#aaa;margin-bottom:4px;">Class rules (all must pass)</div>
+    <div id="rule-list" style="display:flex;flex-direction:column;gap:4px;margin-bottom:6px;"></div>
+    <div style="display:flex;gap:6px;margin-bottom:10px;">
+      <button class="btn btn-sm btn-secondary" onclick="addRule()">+ Rule</button>
+      <span style="font-size:11px;color:#777;align-self:center;">has A · lacks A · A overlaps B · no labels · unlabeled file</span>
+    </div>
+    <div style="font-size:12px;color:#aaa;margin-bottom:4px;">Filenames (optional, one per line, substring match)</div>
+    <textarea id="filter-names" placeholder="Enter filenames (one per line)&#10;Matches by substring in filename" rows="6" style="width:100%;background:#0a0a0a;color:#fff;border:1px solid #333;border-radius:3px;font-size:12px;resize:vertical;font-family:monospace;padding:8px;box-sizing:border-box;"></textarea>
     <div style="margin-top:8px;display:flex;gap:6px;align-items:center;">
       <button class="btn btn-sm" onclick="applyFilter()">Apply</button>
       <button class="btn btn-sm btn-secondary" onclick="clearFilter()">Clear</button>
@@ -1293,6 +1301,9 @@ async function loadLabelCache() {
       if (s.deselectAfterDraw !== undefined) {
         document.getElementById('deselect-after-draw').checked = s.deselectAfterDraw;
       }
+      if (s.overlapAreaMode !== undefined) {
+        document.getElementById('overlap-area-mode').checked = s.overlapAreaMode;
+      }
       if (s.enableZoom !== undefined) {
         document.getElementById('enable-zoom').checked = s.enableZoom;
       }
@@ -1349,6 +1360,7 @@ async function saveSettings() {
     zoomSize: document.getElementById('zoom-size').value,
     regionOpacity: document.getElementById('region-opacity').value,
     onlyWithRegions: document.getElementById('only-with-regions').checked,
+    overlapAreaMode: document.getElementById('overlap-area-mode').checked,
     countedClasses: Array.from(countedClasses),
     hiddenTintClasses: Array.from(hiddenTintClasses),
     ignoreOverlapClasses: Array.from(ignoreOverlapClasses),
@@ -1738,6 +1750,57 @@ function isUnknownClass(className) {
   return !Object.values(classNames).includes(className);
 }
 
+function overlapAreaMode() {
+  const el = document.getElementById('overlap-area-mode');
+  return !!(el && el.checked);
+}
+
+// Intersection rectangles (normalized cx,cy,w,h -> x1,y1,x2,y2) for every overlapping pair
+function findOverlapRects(regions) {
+  const rects = [];
+  for (let i = 0; i < regions.length; i++) {
+    for (let j = i + 1; j < regions.length; j++) {
+      const a = regions[i], b = regions[j];
+      if (ignoreOverlapClasses.has(a.class) || ignoreOverlapClasses.has(b.class)) continue;
+      const x1 = Math.max(a.box[0] - a.box[2]/2, b.box[0] - b.box[2]/2);
+      const x2 = Math.min(a.box[0] + a.box[2]/2, b.box[0] + b.box[2]/2);
+      const y1 = Math.max(a.box[1] - a.box[3]/2, b.box[1] - b.box[3]/2);
+      const y2 = Math.min(a.box[1] + a.box[3]/2, b.box[1] + b.box[3]/2);
+      if (x2 > x1 && y2 > y1) rects.push([x1, y1, x2, y2]);
+    }
+  }
+  return rects;
+}
+
+// Area mode: pulsing two-colour fill + marching-ants border + corner ticks on the intersection only
+function drawOverlapAreas(ctx, rects, ox, oy, iw, ih, lineScale) {
+  const t = 0.5 + 0.5 * Math.sin(animationPhase * 1.5);
+  rects.forEach(([x1, y1, x2, y2]) => {
+    const rx = ox + x1 * iw, ry = oy + y1 * ih, rw = (x2 - x1) * iw, rh = (y2 - y1) * ih;
+    ctx.save();
+    ctx.globalAlpha = 0.35 + 0.45 * t;
+    ctx.fillStyle = t > 0.5 ? '#ff00ff' : '#ffea00';
+    ctx.fillRect(rx, ry, rw, rh);
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = 3 / lineScale;
+    ctx.setLineDash([6 / lineScale, 4 / lineScale]);
+    ctx.lineDashOffset = -animationPhase * 12 / lineScale;
+    ctx.strokeStyle = '#000';
+    ctx.strokeRect(rx, ry, rw, rh);
+    ctx.lineDashOffset = -animationPhase * 12 / lineScale + 5 / lineScale;
+    ctx.strokeStyle = '#fff';
+    ctx.strokeRect(rx, ry, rw, rh);
+    ctx.setLineDash([]);
+    const k = Math.min(10 / lineScale, rw / 2, rh / 2);
+    ctx.strokeStyle = '#ff2d2d';
+    ctx.lineWidth = 3 / lineScale;
+    [[rx, ry, 1, 1], [rx + rw, ry, -1, 1], [rx, ry + rh, 1, -1], [rx + rw, ry + rh, -1, -1]].forEach(([cx, cy, dx, dy]) => {
+      ctx.beginPath(); ctx.moveTo(cx + dx * k, cy); ctx.lineTo(cx, cy); ctx.lineTo(cx, cy + dy * k); ctx.stroke();
+    });
+    ctx.restore();
+  });
+}
+
 function findOverlaps(regions) {
   const overlapping = new Set();
   for (let i = 0; i < regions.length; i++) {
@@ -1958,7 +2021,15 @@ function renderModalCanvas() {
 }
 
 function drawRegions(ctx, regions, ox, oy, iw, ih, showHandles, selectedIdx = -1, lineScale = 1) {
-  const overlaps = findOverlaps(regions);
+  drawRegionsBase(ctx, regions, ox, oy, iw, ih, showHandles, selectedIdx, lineScale);
+  if (overlapAreaMode()) drawOverlapAreas(ctx, findOverlapRects(regions), ox, oy, iw, ih, lineScale);
+}
+
+function drawRegionsBase(ctx, regions, ox, oy, iw, ih, showHandles, selectedIdx = -1, lineScale = 1) {
+  const areaMode = overlapAreaMode();
+  const overlapRects = areaMode ? findOverlapRects(regions) : [];
+  const overlaps = areaMode ? new Set() : findOverlaps(regions);
+  if (overlapRects.length && !animationRunning) startAnimation();
   const touchingEdges = findTouchingEdges(regions, iw, ih);
   const boundaryEdges = findBoundaryEdges(regions);
   
@@ -2142,6 +2213,15 @@ function selectItem(index) {
   }
 }
 
+// Alt+drag: a box is split 3x3; corner zones drag that corner, edge zones that edge, the centre moves the box
+function altZoneMode(mx, my, rx, ry, rw, rh) {
+  const col = Math.min(2, Math.max(0, Math.floor((mx - rx) / (rw / 3))));
+  const row = Math.min(2, Math.max(0, Math.floor((my - ry) / (rh / 3))));
+  return [['nw', 'n', 'ne'], ['w', 'move', 'e'], ['sw', 's', 'se']][row][col];
+}
+const ALT_CURSORS = { nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize',
+                      n: 'ns-resize', s: 'ns-resize', w: 'ew-resize', e: 'ew-resize', move: 'move' };
+
 // Grid editing
 function getGridHandleAtPoint(mx, my, r, coords) {
   const rx = coords.x + (r.box[0] - r.box[2]/2) * coords.w;
@@ -2186,7 +2266,28 @@ function gridMouseDown(e, index) {
   const rect = canvas.getBoundingClientRect();
   const mx = e.clientX - rect.left;
   const my = e.clientY - rect.top;
-  
+
+  if (e.altKey) {
+    const c = getCanvasCoords(canvas, index);
+    if (c) {
+      const boxPx = r => [c.x + (r.box[0] - r.box[2]/2) * c.w, c.y + (r.box[1] - r.box[3]/2) * c.h, r.box[2] * c.w, r.box[3] * c.h];
+      const hit = r => { const [rx, ry, rw, rh] = boxPx(r); return mx >= rx && mx <= rx + rw && my >= ry && my <= ry + rh; };
+      let i = gridEditSelectedIdx >= 0 && hit(gridEditRegions[gridEditSelectedIdx]) ? gridEditSelectedIdx : -1;
+      for (let k = gridEditRegions.length - 1; i < 0 && k >= 0; k--) if (hit(gridEditRegions[k])) i = k;
+      if (i >= 0) {
+        e.preventDefault();
+        gridEditSelectedIdx = i;
+        gridDragMode = altZoneMode(mx, my, ...boxPx(gridEditRegions[i]));
+        gridDragStart = { x: mx, y: my };
+        gridDragRegion = { ...gridEditRegions[i], box: [...gridEditRegions[i].box] };
+        gridCloneMode = false;
+        redrawGridCanvas(index);
+        refreshZoomWindow();
+        return;
+      }
+    }
+  }
+
   if (drawingClass) {
     gridEditDrawing = true;
     gridEditStart = { x: mx, y: my };
@@ -2976,7 +3077,28 @@ modalCanvas.addEventListener('mousedown', e => {
   const sy = modalCanvas.height / rect.height;
   const mx = (e.clientX - rect.left) * sx;
   const my = (e.clientY - rect.top) * sy;
-  
+
+  if (e.altKey) {
+    const boxPx = r => [(r.box[0] - r.box[2]/2) * modalCanvas.width, (r.box[1] - r.box[3]/2) * modalCanvas.height,
+                        r.box[2] * modalCanvas.width, r.box[3] * modalCanvas.height];
+    const hit = r => { const [rx, ry, rw, rh] = boxPx(r); return mx >= rx && mx <= rx + rw && my >= ry && my <= ry + rh; };
+    let i = modalSelectedIdx >= 0 && hit(modalRegions[modalSelectedIdx]) ? modalSelectedIdx : -1;
+    for (let k = modalRegions.length - 1; i < 0 && k >= 0; k--) if (hit(modalRegions[k])) i = k;
+    if (i >= 0) {
+      e.preventDefault();
+      modalSelectedIdx = i;
+      modalDragMode = altZoneMode(mx, my, ...boxPx(modalRegions[i]));
+      modalDragStart = { x: mx, y: my };
+      modalDragRegion = { ...modalRegions[i], box: [...modalRegions[i].box] };
+      modalCloneMode = false;
+      renderModalRegionsList();
+      renderModal();
+      updateModalInfo();
+      refreshZoomWindow();
+      return;
+    }
+  }
+
   if (drawingClass) {
     modalDrawing = true;
     modalStart = { x: mx, y: my };
@@ -3096,7 +3218,13 @@ modalCanvas.addEventListener('mousemove', e => {
   
   // Update cursor based on hover (only if zoom is disabled)
   if (!isZoomEnabled() || (!drawingClass && modalSelectedIdx < 0)) {
-    if (modalSelectedIdx >= 0 && !drawingClass) {
+    if (e.altKey && modalSelectedIdx >= 0) {
+      const r = modalRegions[modalSelectedIdx];
+      const rx = (r.box[0] - r.box[2]/2) * modalCanvas.width, ry = (r.box[1] - r.box[3]/2) * modalCanvas.height;
+      const rw = r.box[2] * modalCanvas.width, rh = r.box[3] * modalCanvas.height;
+      const inside = mx >= rx && mx <= rx + rw && my >= ry && my <= ry + rh;
+      modalCanvas.style.cursor = inside ? ALT_CURSORS[altZoneMode(mx, my, rx, ry, rw, rh)] : 'default';
+    } else if (modalSelectedIdx >= 0 && !drawingClass) {
       const handle = getHandleAtPoint(mx, my, modalRegions[modalSelectedIdx]);
       const cursors = { nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize',
                         n: 'ns-resize', s: 'ns-resize', w: 'ew-resize', e: 'ew-resize' };
@@ -3321,12 +3449,76 @@ function goToPage() {
   }
 }
 
+// ---- class-rule filters: evaluated on label files fetched from /label_boxes (fresh on every Apply)
+let filterRules = []; // [{type, a, b, min}]
+const RULE_TYPES = [["has", "has class A"], ["lacks", "lacks class A"], ["overlap", "A overlaps B"],
+                    ["nolabels", "no boxes at all"], ["nofile", "no label file"]];
+
+function classOptions(sel) {
+  return Object.entries(classNames).map(([i, n]) => `<option value="${i}" ${String(sel) === i ? 'selected' : ''}>${n}</option>`).join('');
+}
+
+function renderRules() {
+  const box = document.getElementById('rule-list');
+  box.innerHTML = '';
+  filterRules.forEach((r, k) => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:4px;align-items:center;font-size:12px;';
+    const needA = r.type === 'has' || r.type === 'lacks' || r.type === 'overlap';
+    row.innerHTML =
+      `<select data-k="${k}" data-f="type">${RULE_TYPES.map(([v, t]) => `<option value="${v}" ${r.type === v ? 'selected' : ''}>${t}</option>`).join('')}</select>` +
+      (needA ? `<select data-k="${k}" data-f="a" title="A">${classOptions(r.a)}</select>` : '') +
+      (r.type === 'overlap' ? `<select data-k="${k}" data-f="b" title="B">${classOptions(r.b)}</select>` +
+        `<input data-k="${k}" data-f="min" type="number" step="0.05" min="0" max="1" value="${r.min}" title="min overlap: intersection / smaller box" style="width:52px;">` : '') +
+      `<button class="btn btn-sm btn-secondary" onclick="filterRules.splice(${k},1);renderRules();">×</button>`;
+    box.appendChild(row);
+  });
+  box.querySelectorAll('select,input').forEach(el => el.onchange = () => {
+    const r = filterRules[+el.dataset.k];
+    r[el.dataset.f] = el.dataset.f === 'min' ? parseFloat(el.value) || 0 : el.value;
+    if (el.dataset.f === 'type') renderRules();
+  });
+}
+
+function addRule() {
+  const first = Object.keys(classNames)[0] || '0';
+  filterRules.push({type: 'has', a: first, b: first, min: 0.1});
+  renderRules();
+}
+
+function overlapShare(p, q) { // intersection / area of the smaller box, yolo xywh
+  const ix = Math.min(p[1] + p[3] / 2, q[1] + q[3] / 2) - Math.max(p[1] - p[3] / 2, q[1] - q[3] / 2);
+  const iy = Math.min(p[2] + p[4] / 2, q[2] + q[4] / 2) - Math.max(p[2] - p[4] / 2, q[2] - q[4] / 2);
+  if (ix <= 0 || iy <= 0) return 0;
+  return (ix * iy) / Math.max(1e-9, Math.min(p[3] * p[4], q[3] * q[4]));
+}
+
+function passesRules(boxes) { // boxes: array or null (no label file)
+  return filterRules.every(r => {
+    if (r.type === 'nofile') return boxes === null;
+    const bx = boxes || [];
+    if (r.type === 'nolabels') return bx.length === 0;
+    const A = bx.filter(b => String(b[0]) === String(r.a));
+    if (r.type === 'has') return A.length > 0;
+    if (r.type === 'lacks') return A.length === 0;
+    const B = bx.filter(b => String(b[0]) === String(r.b));
+    return A.some(p => B.some(q => p !== q && overlapShare(p, q) >= (r.min || 0) && (r.min > 0 || overlapShare(p, q) > 0)));
+  });
+}
+
+async function fetchLabelBoxes(paths) {
+  const res = await fetch('/label_boxes', {method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({images: paths, dataset_base: datasetBase, structure: datasetStructure})});
+  return res.json();
+}
+
 function toggleFilterPopup() {
+  if (!document.getElementById('filter-overlay').classList.contains('visible')) renderRules();
   const overlay = document.getElementById('filter-overlay');
   overlay.classList.toggle('visible');
 }
 
-function applyFilter() {
+async function applyFilter() {
   const text = document.getElementById('filter-names').value;
   // Normalize line endings, remove extensions, clean up
   const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
@@ -3342,10 +3534,19 @@ function applyFilter() {
   }
   
   activeFilter = lines;
-  
+  let pool = allImages;
+  if (filterRules.length) {
+    statusEl.textContent = 'Reading labels…';
+    statusEl.style.color = '#aaa';
+    const boxes = await fetchLabelBoxes(allImages);
+    pool = allImages.filter(p => passesRules(boxes[p] === undefined ? null : boxes[p]));
+    activeFilter = activeFilter.concat(filterRules.map(r => `rule:${r.type}`));
+  }
+
   if (lines.length === 0) {
-    images = [...allImages];
-    statusEl.textContent = '';
+    images = [...pool];
+    statusEl.textContent = filterRules.length ? `Matched ${images.length} of ${allImages.length}` : '';
+    statusEl.style.color = images.length > 0 ? '#4ade80' : '#ff6b6b';
   } else {
     // Get sample for debugging
     const samplePath = allImages[0];
@@ -3357,7 +3558,7 @@ function applyFilter() {
     console.log('Sample basename:', sampleBase);
     
     // Match by basename (without extension) - substring match
-    images = allImages.filter(path => {
+    images = pool.filter(path => {
       const filename = path.split(/[/\\]/).pop().toLowerCase();
       const basename = filename.replace(/\.(jpg|jpeg|png|bmp|webp)$/i, '');
       return lines.some(sub => basename.includes(sub) || sub.includes(basename));
@@ -3385,6 +3586,8 @@ function clearFilter() {
   document.getElementById('filter-names').value = '';
   document.getElementById('filter-status').textContent = '';
   activeFilter = [];
+  filterRules = [];
+  renderRules();
   images = [...allImages];
   currentPage = 0;
   updatePagination();
@@ -3581,6 +3784,9 @@ document.addEventListener('keydown', e => {
     return;
   }
 });
+
+// Alt is an editing modifier here: keep a bare Alt release from focusing the browser menu
+document.addEventListener('keyup', e => { if (e.key === 'Alt') e.preventDefault(); });
 
 // Cursor label follows mouse
 document.addEventListener('mousemove', e => {

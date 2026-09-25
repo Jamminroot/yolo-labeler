@@ -578,6 +578,28 @@ class YoloLabelHandler(SimpleHTTPRequestHandler):
             self.send_error(404)
 
     def do_POST(self):
+        if self.path == "/label_boxes":
+            # {images:[...], dataset_base, structure} -> {path: [[cls,x,y,w,h], ...] | null (no label file)}
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length))
+            out = {}
+            for image_path in data.get("images", []):
+                lp = get_label_path(image_path, data["dataset_base"], data.get("structure", "flat"))
+                if not lp.exists():
+                    out[image_path] = None
+                    continue
+                boxes = []
+                for line in lp.read_text().splitlines():
+                    parts = line.split()
+                    if len(parts) >= 5 and parts[0].lstrip("-").isdigit():
+                        boxes.append([int(parts[0])] + [float(v) for v in parts[1:5]])
+                out[image_path] = boxes
+            self.send_response(200)
+            self.send_header("Content-type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(out).encode())
+            return
+
         if self.path == "/save_batch":
             length = int(self.headers.get("Content-Length", 0))
             data = json.loads(self.rfile.read(length))
