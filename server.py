@@ -570,6 +570,8 @@ class YoloLabelHandler(SimpleHTTPRequestHandler):
                     ext, "image/jpeg"
                 )
                 self.send_header("Content-type", ct)
+                # images may be re-cut in place: never let the browser show a stale copy next to fresh labels
+                self.send_header("Cache-Control", "no-store")
                 self.end_headers()
                 self.wfile.write(p.read_bytes())
             else:

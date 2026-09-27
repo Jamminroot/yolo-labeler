@@ -195,6 +195,7 @@ body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; hei
   </div>
   <div class="setting-group">
     <label><input type="checkbox" id="enable-zoom" checked onchange="saveSettings()"> Zoom cursor</label>
+    <label title="Hold the right mouse button over an image to magnify, in any mode"><input type="checkbox" id="zoom-rmb" onchange="saveSettings()"> Show Zoom on RMB</label>
     <input type="range" id="zoom-size" min="150" max="350" value="220" style="width:80px;vertical-align:middle;margin-left:8px;" onchange="updateZoomSize(); saveSettings()" oninput="updateZoomSize()">
   </div>
   <div class="setting-group">
@@ -269,7 +270,7 @@ body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; hei
     <div class="help-text">
       <b>Shortcuts:</b><br>
       Hotkey → Draw class<br>
-      Shift+Hotkey → Change class<br>
+      Alt+Hotkey → Change class<br>
       Ctrl+Drag → Clone region<br>
       Shift+Drag → Lock H/V axis<br>
       R → Run detection<br>
@@ -352,7 +353,7 @@ body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; hei
 
 <div id="hotkey-modal">
   <h3>Set Hotkey for: <span id="hotkey-class-name"></span></h3>
-  <input type="text" id="hotkey-input" maxlength="1" placeholder="Press a key">
+  <input type="text" id="hotkey-input" maxlength="2" placeholder="Press a key (Shift+key ok)">
   <div class="btns">
     <button class="btn btn-secondary" onclick="closeHotkeyModal()">Cancel</button>
     <button class="btn" onclick="saveHotkey()">Save</button>
@@ -887,7 +888,7 @@ async function loadDataset() {
 
 function hotkeyOf(e) {
   const m = /^(?:Key([A-Z])|Digit(\d)|Numpad(\d))$/.exec(e.code || '');
-  if (m) return (m[1] || m[2] || m[3]).toLowerCase();
+  if (m) return (e.shiftKey ? '⇧' : '') + (m[1] || m[2] || m[3]).toLowerCase(); // Shift+letter/digit is its own hotkey
   return e.shiftKey ? '' : e.key.toLowerCase(); // other keys only unshifted
 }
 // e r z m, space are taken by built-in shortcuts
@@ -1367,6 +1368,7 @@ async function loadLabelCache() {
       if (s.enableZoom !== undefined) {
         document.getElementById('enable-zoom').checked = s.enableZoom;
       }
+      if (s.zoomRmb !== undefined) document.getElementById('zoom-rmb').checked = s.zoomRmb;
       if (s.zoomSize !== undefined) {
         document.getElementById('zoom-size').value = s.zoomSize;
         updateZoomSize();
@@ -1438,6 +1440,7 @@ async function saveSettings() {
     editInGrid: document.getElementById('edit-in-grid').checked,
     deselectAfterDraw: document.getElementById('deselect-after-draw').checked,
     enableZoom: document.getElementById('enable-zoom').checked,
+    zoomRmb: document.getElementById('zoom-rmb').checked,
     zoomSize: document.getElementById('zoom-size').value,
     regionOpacity: document.getElementById('region-opacity').value,
     stripeStrength: document.getElementById('stripe-strength').value,
@@ -2387,6 +2390,7 @@ function getGridHandleAtPoint(mx, my, r, coords) {
 }
 
 function gridMouseDown(e, index) {
+  if (e.button === 2) return;  // right button: zoom only, never draws / selects
   if (!editInGrid) return;
   
   if (gridEditIndex !== index) {
@@ -2546,6 +2550,7 @@ function gridMouseMove(e, index) {
 }
 
 function gridMouseUp(e, index) {
+  if (e.button === 2) return;
   if (!editInGrid || gridEditIndex !== index) return;
   
   if (gridEditDrawing && drawingClass) {
@@ -2727,14 +2732,35 @@ function updateZoomSize() {
 }
 
 function isZoomEnabled() {
-  return document.getElementById('enable-zoom').checked;
+  return document.getElementById('enable-zoom').checked || rmbZoom();
 }
+
+// "Show Zoom on RMB": the zoom follows the cursor while the right button is held, whatever the mode
+let rmbDown = false;
+function rmbZoom() {
+  return rmbDown && document.getElementById('zoom-rmb').checked;
+}
+document.addEventListener('mousedown', e => {
+  if (e.button !== 2 || !document.getElementById('zoom-rmb').checked) return;
+  rmbDown = true;
+  if (modalOpen && e.target === modalCanvas) updateModalZoomWindow(e);
+  else if (lastZoomEvent && lastZoomIndex >= 0 && e.target === lastZoomEvent.target) updateZoomWindow(e, lastZoomIndex);
+}, true);
+document.addEventListener('mouseup', e => {
+  if (e.button !== 2 || !rmbDown) return;
+  rmbDown = false;
+  refreshZoomWindow();  // back to the normal rule (or hidden)
+  if (!document.getElementById('enable-zoom').checked) hideZoomWindow(lastZoomEvent && lastZoomEvent.target);
+}, true);
+document.addEventListener('contextmenu', e => {
+  if (document.getElementById('zoom-rmb').checked && e.target.tagName === 'CANVAS') e.preventDefault();
+});
 
 function updateZoomWindow(e, index) {
   lastZoomEvent = e;
   lastZoomIndex = index;
   
-  if (!isZoomEnabled() || (!editInGrid && !drawingClass)) {
+  if (!rmbZoom() && (!isZoomEnabled() || (!editInGrid && !drawingClass))) {
     hideZoomWindow(e.target);
     return;
   }
@@ -2828,7 +2854,7 @@ function updateModalZoomWindow(e) {
   lastZoomEvent = e;
   lastZoomIndex = -1; // Modal mode
   
-  if (!isZoomEnabled() || (!drawingClass && modalSelectedIdx < 0)) {
+  if (!rmbZoom() && (!isZoomEnabled() || (!drawingClass && modalSelectedIdx < 0))) {
     hideZoomWindow(modalCanvas);
     return;
   }
@@ -3210,6 +3236,7 @@ function getHandleAtPoint(mx, my, r) {
 }
 
 modalCanvas.addEventListener('mousedown', e => {
+  if (e.button === 2) return;  // right button: zoom only
   const rect = modalCanvas.getBoundingClientRect();
   const sx = modalCanvas.width / rect.width;
   const sy = modalCanvas.height / rect.height;
@@ -3378,6 +3405,7 @@ modalCanvas.addEventListener('mouseleave', () => {
 });
 
 modalCanvas.addEventListener('mouseup', e => {
+  if (e.button === 2) return;
   if (modalDrawing && drawingClass) {
     const rect = modalCanvas.getBoundingClientRect();
     const sx = modalCanvas.width / rect.width;
@@ -3805,7 +3833,7 @@ document.addEventListener('keydown', e => {
   
   const key = e.key.toLowerCase();
   const hk = hotkeyOf(e);
-  if (e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && hotkeys[hk]) {
+  if (e.altKey && !e.ctrlKey && !e.metaKey && hotkeys[hk]) {
     e.preventDefault();
     changeSelectedClass(hotkeys[hk]);
     return;
@@ -3918,8 +3946,8 @@ document.addEventListener('keydown', e => {
     return;
   }
 
-  // Hotkey without modifiers draws (Shift+hotkey = change class, handled above)
-  if (hotkeys[hk] && !e.ctrlKey && !e.altKey && !e.metaKey && !e.shiftKey) {
+  // Hotkey (Shift included in hk) draws (Alt+hotkey = change class, handled above)
+  if (hotkeys[hk] && !e.ctrlKey && !e.altKey && !e.metaKey) {
     e.preventDefault();
     setDrawingClass(hotkeys[hk]);
     return;
@@ -3942,7 +3970,7 @@ document.addEventListener('mousemove', e => {
 document.getElementById('hotkey-input').addEventListener('keydown', e => {
   e.preventDefault();
   const k = hotkeyOf(e);
-  if (e.key !== 'Escape' && e.key !== 'Enter' && k.length === 1 && k !== ' ') {
+  if (e.key !== 'Escape' && e.key !== 'Enter' && k && k !== ' ') {
     document.getElementById('hotkey-input').value = k;
   }
 });
