@@ -180,6 +180,7 @@ body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; hei
   </div>
   <div class="setting-group">
     <label><input type="checkbox" id="full-width-mode" onchange="updateGrid(); saveSettings()"> Full width</label>
+    <label title="Justified rows: every image keeps its aspect ratio, rows share one height and fill the width (no empty space next to tall crops)"><input type="checkbox" id="mosaic-mode" onchange="updateGrid(); saveSettings()"> Mosaic</label>
   </div>
   <div class="setting-group">
     <label><input type="checkbox" id="paginate-grid" checked onchange="updateGrid(); saveSettings()"> Paginate</label>
@@ -1408,6 +1409,7 @@ async function loadLabelCache() {
       if (s.gridCols) {
         document.getElementById('grid-cols').value = s.gridCols;
       }
+      if (s.mosaicMode !== undefined) document.getElementById('mosaic-mode').checked = s.mosaicMode;
       if (s.fullWidthMode !== undefined) {
         document.getElementById('full-width-mode').checked = s.fullWidthMode;
       }
@@ -1453,6 +1455,7 @@ async function saveSettings() {
     ignoreOverlapClasses: Array.from(ignoreOverlapClasses),
     gridCols: document.getElementById('grid-cols').value,
     fullWidthMode: document.getElementById('full-width-mode').checked,
+    mosaicMode: document.getElementById('mosaic-mode').checked,
     gridRows: document.getElementById('grid-rows').value,
     paginateGrid: document.getElementById('paginate-grid').checked,
     customColors: customColors
@@ -1574,7 +1577,15 @@ function renderGrid() {
   const cols = parseInt(document.getElementById('grid-cols').value) || 4;
   const container = document.getElementById('grid-container');
   const fullWidthMode = document.getElementById('full-width-mode').checked;
+  const mosaicMode = document.getElementById('mosaic-mode').checked;
   
+  if (mosaicMode) {
+    grid.classList.add('full-width-mode');
+    renderMosaic(grid, start, end, cols, container.clientWidth - 30);
+    updateProgress();
+    updateLabelCountsFooter();
+    return;
+  }
   if (fullWidthMode) {
     grid.classList.add('full-width-mode');
     const availableWidth = container.clientWidth - 30;
@@ -1705,7 +1716,55 @@ function createGridItem(index, w, h, fullWidthMode = false) {
   return item;
 }
 
-async function loadThumbnailFullWidth(index, item, availableWidth, itemCount) {
+// Mosaic: justified rows. Sizes need aspect ratios first, so the page's images are loaded before layout.
+function imageSize(path) {
+  return new Promise(resolve => {
+    const cached = imageCache[path];
+    if (cached?.img) return resolve([cached.img.width, cached.img.height]);
+    const img = new Image();
+    img.onload = () => { imageCache[path] = imageCache[path] || { img: null, regions: null }; imageCache[path].img = img;
+                         resolve([img.width, img.height]); };
+    img.onerror = () => resolve([16, 9]);
+    img.src = `/image?path=${encodeURIComponent(path)}`;
+  });
+}
+
+async function renderMosaic(grid, start, end, cols, availableWidth) {
+  const token = (renderMosaic.token = (renderMosaic.token || 0) + 1);
+  const idx = [];
+  for (let i = start; i < end; i++) idx.push(i);
+  const sizes = await Promise.all(idx.map(i => imageSize(images[i])));
+  if (token !== renderMosaic.token) return;  // a newer render started meanwhile
+  const gap = 8;
+  const targetH = Math.max(80, Math.round((availableWidth / cols) * 9 / 16));
+  let row = [];
+  const flush = (last) => {
+    if (!row.length) return;
+    const ratio = row.reduce((a, r) => a + r.ar, 0);
+    let h = (availableWidth - gap * (row.length - 1)) / ratio;
+    if (last && h > targetH) h = targetH;  // an unfinished last row keeps the target height
+    const rowDiv = document.createElement('div');
+    rowDiv.className = 'grid-row';
+    for (const r of row) {
+      const w = Math.max(20, Math.floor(r.ar * h));
+      const item = createGridItem(r.index, w, Math.round(h), true);
+      item.style.width = w + 'px';
+      rowDiv.appendChild(item);
+      loadThumbnailFullWidth(r.index, item, availableWidth, 1, w, Math.round(h));
+    }
+    grid.appendChild(rowDiv);
+    row = [];
+  };
+  idx.forEach((index, k) => {
+    const [w, h] = sizes[k];
+    row.push({ index, ar: w / Math.max(1, h) });
+    const ratio = row.reduce((a, r) => a + r.ar, 0);
+    if (ratio * targetH + gap * (row.length - 1) >= availableWidth) flush(false);
+  });
+  flush(true);
+}
+
+async function loadThumbnailFullWidth(index, item, availableWidth, itemCount, fixedW = 0, fixedH = 0) {
   const path = images[index];
   const canvas = item.querySelector('canvas');
   const ctx = canvas.getContext('2d');
@@ -1722,8 +1781,8 @@ async function loadThumbnailFullWidth(index, item, availableWidth, itemCount) {
     const aspectRatio = img.width / img.height;
     const gapTotal = (itemCount - 1) * 8;
     const baseWidth = Math.floor((availableWidth - gapTotal) / itemCount);
-    const w = baseWidth;
-    const h = Math.round(w / aspectRatio);
+    const w = fixedW || baseWidth;
+    const h = fixedH || Math.round(w / aspectRatio);
     
     canvas.width = w;
     canvas.height = h;
