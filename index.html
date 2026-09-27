@@ -73,6 +73,14 @@ body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; hei
 
 .class-btn { display: flex; align-items: center; gap: 6px; padding: 5px 8px; background: #0f3460; border: 1px solid #333; border-radius: 4px; cursor: pointer; font-size: 11px; transition: all 0.15s; }
 .class-btn:hover { border-color: #e94560; }
+.class-btn .cls-style { opacity: 0.45; font-size: 11px; padding: 0 2px; cursor: pointer; }
+.class-btn .cls-style:hover, .class-btn .cls-style.custom { opacity: 1; }
+#class-style-pop { display: none; position: fixed; z-index: 3000; background: #1a1a2e; border: 1px solid #e94560; border-radius: 6px; padding: 8px 10px; font-size: 11px; color: #ddd; width: 190px; }
+#class-style-pop.visible { display: block; }
+#class-style-pop .row { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
+#class-style-pop .row label { width: 62px; }
+#class-style-pop input[type=range] { flex: 1; }
+#class-style-pop .val { width: 30px; text-align: right; font-family: monospace; }
 .class-btn.active { background: #e94560; border-color: #e94560; }
 .class-btn .key { background: #333; padding: 1px 5px; border-radius: 3px; font-family: monospace; min-width: 18px; text-align: center; font-size: 10px; cursor: pointer; }
 .class-btn .key:hover { background: #555; }
@@ -197,6 +205,7 @@ body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; hei
   <div class="setting-group">
     <label><input type="checkbox" id="enable-zoom" checked onchange="saveSettings()"> Zoom cursor</label>
     <label title="Hold the right mouse button over an image to magnify, in any mode"><input type="checkbox" id="zoom-rmb" onchange="saveSettings()"> Show Zoom on RMB</label>
+    <label title="Box labels appear only for the box under the cursor (and the selected one)"><input type="checkbox" id="labels-on-hover" onchange="saveSettings(); redrawAllGridCanvases(); if (modalOpen) renderModal();"> Show label only on hover</label>
     <input type="range" id="zoom-size" min="150" max="350" value="220" style="width:80px;vertical-align:middle;margin-left:8px;" onchange="updateZoomSize(); saveSettings()" oninput="updateZoomSize()">
   </div>
   <div class="setting-group">
@@ -929,6 +938,8 @@ function saveHotkeys() {
 
 let countedClasses = new Set();
 let hiddenTintClasses = new Set();
+// per-class display: {opacity: 0..1 | undefined (= global), bright: -1..1, label: bool}
+let classStyle = {};
 let ignoreOverlapClasses = new Set();
 let regionOpacity = 0.75;
 let unsavedDetected = new Set();
@@ -975,20 +986,19 @@ function renderClassButtons() {
   // Add header row
   const header = document.createElement('div');
   header.className = 'class-header';
-  header.innerHTML = `<span class="hdr-key">Key</span><span class="hdr-color"></span><span class="hdr-name">Class</span><span class="hdr-check" title="Show tint">T</span><span class="hdr-check" title="Count">C</span><span class="hdr-check" title="Ignore overlaps">O</span>`;
+  header.innerHTML = `<span class="hdr-key">Key</span><span class="hdr-color"></span><span class="hdr-name">Class</span><span class="hdr-check" title="Count">C</span><span class="hdr-check" title="Ignore overlaps">O</span>`;
   container.appendChild(header);
   
   for (const [idx, name] of Object.entries(classNames)) {
     const key = nameToKey[name] || '-';
     const color = colors[name] || '#888';
     const countChecked = countedClasses.has(name) ? 'checked' : '';
-    const tintChecked = !hiddenTintClasses.has(name) ? 'checked' : '';
     const overlapChecked = ignoreOverlapClasses.has(name) ? 'checked' : '';
 
     const btn = document.createElement('div');
     btn.className = 'class-btn';
     btn.dataset.class = name;
-    btn.innerHTML = `<span class="key" onclick="event.stopPropagation();editHotkey('${name}')">${key}</span><span class="color" style="background:${color}" onclick="editColor('${name}', event)" title="Click to change color"></span><span class="class-name">${name}</span><input type="checkbox" class="class-check" ${tintChecked} onclick="event.stopPropagation();toggleClassTint('${name}', this.checked)" title="Show tint"><input type="checkbox" class="class-check" ${countChecked} onclick="event.stopPropagation();toggleClassCount('${name}', this.checked)" title="Count"><input type="checkbox" class="class-check" ${overlapChecked} onclick="event.stopPropagation();toggleIgnoreOverlap('${name}', this.checked)" title="Ignore overlaps">`;
+    btn.innerHTML = `<span class="key" onclick="event.stopPropagation();editHotkey('${name}')">${key}</span><span class="color" style="background:${color}" onclick="editColor('${name}', event)" title="Click to change color"></span><span class="class-name">${name}</span><span class="cls-style${classStyle[name] || hiddenTintClasses.has(name) ? ' custom' : ''}" title="Display: opacity, brightness, label" onclick="event.stopPropagation();openClassStyle('${name}', event)">⚙</span><input type="checkbox" class="class-check" ${countChecked} onclick="event.stopPropagation();toggleClassCount('${name}', this.checked)" title="Count"><input type="checkbox" class="class-check" ${overlapChecked} onclick="event.stopPropagation();toggleIgnoreOverlap('${name}', this.checked)" title="Ignore overlaps">`;
     btn.onclick = () => setDrawingClass(name);
     container.appendChild(btn);
     
@@ -1391,6 +1401,8 @@ async function loadLabelCache() {
       if (s.countedClasses && Array.isArray(s.countedClasses)) {
         countedClasses = new Set(s.countedClasses);
       }
+      if (s.classStyle && typeof s.classStyle === 'object') classStyle = s.classStyle;
+      if (s.labelsOnHover !== undefined) document.getElementById('labels-on-hover').checked = s.labelsOnHover;
       if (s.hiddenTintClasses && Array.isArray(s.hiddenTintClasses)) {
         hiddenTintClasses = new Set(s.hiddenTintClasses);
       }
@@ -1452,6 +1464,8 @@ async function saveSettings() {
     overlapShow: document.getElementById('overlap-show').value,
     countedClasses: Array.from(countedClasses),
     hiddenTintClasses: Array.from(hiddenTintClasses),
+    classStyle: classStyle,
+    labelsOnHover: document.getElementById('labels-on-hover').checked,
     ignoreOverlapClasses: Array.from(ignoreOverlapClasses),
     gridCols: document.getElementById('grid-cols').value,
     fullWidthMode: document.getElementById('full-width-mode').checked,
@@ -2244,7 +2258,9 @@ function drawRegionsBase(ctx, regions, ox, oy, iw, ih, showHandles, selectedIdx 
     const unknown = isUnknownClass(r.class);
     const overlapBorder = overlaps.has(i);
     const hasOverlap = overlapBorder && overlapFill;
-    const color = unknown ? '#000' : (colors[r.class] || '#888');
+    const cs = classStyle[r.class] || {};
+    const baseColor = unknown ? '#000' : (colors[r.class] || '#888');
+    const color = cs.bright ? lerpColor(toHex(baseColor), cs.bright > 0 ? '#ffffff' : '#000000', Math.abs(cs.bright)) : baseColor;
     
     const rx = ox + (r.box[0] - r.box[2]/2) * iw;
     const ry = oy + (r.box[1] - r.box[3]/2) * ih;
@@ -2254,7 +2270,7 @@ function drawRegionsBase(ctx, regions, ox, oy, iw, ih, showHandles, selectedIdx 
     // Fill (skip if tint hidden for this class)
     const showTint = !hiddenTintClasses.has(r.class);
     if (showTint) {
-      ctx.globalAlpha = regionOpacity;
+      ctx.globalAlpha = cs.opacity !== undefined && cs.opacity !== null ? cs.opacity : regionOpacity;
       ctx.fillStyle = color;
       ctx.fillRect(rx, ry, rw, rh);
       ctx.globalAlpha = 1;
@@ -2359,8 +2375,11 @@ function drawRegionsBase(ctx, regions, ox, oy, iw, ih, showHandles, selectedIdx 
     }
     
     // Label: placed after all boxes (see placeLabels), so it can avoid other boxes' borders and other labels
-    labelJobs.push({ i, label: unknown ? '???' : r.class, rx, ry, rw, rh, unknown, hasOverlap,
-                     selected: i === selectedIdx, hovered: isHovered(regions, i), color });
+    // a class with its label off, or "label only on hover": the label still shows for the hovered / selected box
+    const labelOn = cs.label !== false && !document.getElementById('labels-on-hover').checked;
+    if (labelOn || i === selectedIdx || isHovered(regions, i))
+      labelJobs.push({ i, label: unknown ? '???' : r.class, rx, ry, rw, rh, unknown, hasOverlap,
+                       selected: i === selectedIdx, hovered: isHovered(regions, i), color });
     
     // Handles for selected
     if (showHandles && i === selectedIdx) {
@@ -2375,7 +2394,7 @@ function drawRegionsBase(ctx, regions, ox, oy, iw, ih, showHandles, selectedIdx 
       });
     }
   });
-  placeLabels(ctx, labelJobs, ox, oy, iw, ih);
+  placeLabels(ctx, labelJobs, ox, oy, iw, ih, lineScale);
 }
 
 // hovered box (per regions array): its label gets highlighted, its border a halo
@@ -2401,7 +2420,23 @@ function setHover(regions, idx) {  // true when it changed (caller redraws)
 // Label placement. HARD rule: labels never overlap each other. Soft: cover as little box area as possible (a box
 // nested in another has no free spot - it still gets a label, over the least content), then stay close to the box.
 // Candidate spots ring the box (above, below, right, left; sliding along each side, then further out).
-function placeLabels(ctx, jobs, ox, oy, iw, ih) {
+// Visible part of the canvas being drawn (draw coordinates) + how many draw units make one screen pixel.
+// Set by the zoom window (its source square) and by the modal (scrolled / CSS-scaled canvas); null = all of it.
+let labelView = null;
+function modalLabelView() {
+  const cr = modalCanvas.getBoundingClientRect(), pr = document.getElementById('modal-canvas-container').getBoundingClientRect();
+  if (!cr.width) return null;
+  const k = modalCanvas.width / cr.width;
+  return { rect: [(Math.max(cr.left, pr.left) - cr.left) * k, (Math.max(cr.top, pr.top) - cr.top) * k,
+                  (Math.min(cr.right, pr.right) - cr.left) * k, (Math.min(cr.bottom, pr.bottom) - cr.top) * k], scale: k };
+}
+
+function placeLabels(ctx, jobs, ox0, oy0, iw0, ih0, lineScale = 1) {
+  // labels live inside the VISIBLE part of the image, at a constant on-screen size
+  const vr = labelView ? labelView.rect : [ox0, oy0, ox0 + iw0, oy0 + ih0];
+  const ox = Math.max(ox0, vr[0]), oy = Math.max(oy0, vr[1]);
+  const iw = Math.max(1, Math.min(ox0 + iw0, vr[2]) - ox), ih = Math.max(1, Math.min(oy0 + ih0, vr[3]) - oy);
+  const fs = (labelView ? labelView.scale : 1) / lineScale;
   const boxes = jobs.map(j => [j.rx, j.ry, j.rx + j.rw, j.ry + j.rh]);
   const placed = [];
   const area = (L, R) => Math.max(0, Math.min(L[2], R[2]) - Math.max(L[0], R[0])) * Math.max(0, Math.min(L[3], R[3]) - Math.max(L[1], R[1]));
@@ -2411,8 +2446,8 @@ function placeLabels(ctx, jobs, ox, oy, iw, ih) {
   for (const k of order) {
     const j = jobs[k];
     const big = j.selected || j.hovered;
-    ctx.font = big ? 'bold 12px system-ui' : '9px system-ui';
-    const lw = ctx.measureText(j.label).width + (big ? 8 : 4), lh = big ? 16 : 11;
+    ctx.font = big ? `bold ${12 * fs}px system-ui` : `${9 * fs}px system-ui`;
+    const lw = ctx.measureText(j.label).width + (big ? 8 : 4) * fs, lh = (big ? 16 : 11) * fs;
     const clamp = ([x, y]) => [Math.max(ox, Math.min(ox + iw - lw, x)), Math.max(oy, Math.min(oy + ih - lh, y))];
     const cands = [];
     for (let ring = 0; ring < 8; ring++) {  // 0 = touching the box, then further out
@@ -2427,6 +2462,13 @@ function placeLabels(ctx, jobs, ox, oy, iw, ih) {
       }
     }
     cands.push([j.rx, j.ry], [j.rx + j.rw - lw, j.ry + j.rh - lh]);  // last resort: inside its own box
+    if (j.hovered) {  // hovered: ALWAYS right next to its box (ring 0), placement rules ignored; drawn on top
+      const inImg = ([x, y]) => x >= ox && y >= oy && x + lw <= ox + iw && y + lh <= oy + ih;
+      const ring0 = cands.slice(0, 16);
+      const spot0 = ring0.find(inImg) || clamp(ring0[0]);
+      cands.length = 0;
+      cands.push(spot0);
+    }
     let best = null, bestCost = Infinity;
     cands.map(clamp).forEach(([x, y], n) => {
       const L = [x, y, x + lw, y + lh];
@@ -2439,18 +2481,74 @@ function placeLabels(ctx, jobs, ox, oy, iw, ih) {
     const [lx, ly] = spot;
     placed.push([lx, ly, lx + lw, ly + lh]);
     // background = the box colour (unknown class: red); text black or white, whichever reads on it
-    const bg = j.unknown ? '#ff0000' : toHex(colors[j.label] || j.color || '#888888');
+    const bg = j.unknown ? '#ff0000' : toHex(j.color || colors[j.label] || '#888888');
     ctx.fillStyle = bg;
     ctx.fillRect(lx, ly, lw, lh);
     if (big || j.hasOverlap) {  // hovered / selected / overlapping: white frame so it stands out among same colours
       ctx.strokeStyle = '#ffffff';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(lx + 0.5, ly + 0.5, lw - 1, lh - 1);
+      ctx.lineWidth = fs;
+      ctx.strokeRect(lx + fs / 2, ly + fs / 2, lw - fs, lh - fs);
     }
     ctx.fillStyle = readableOn(bg);
-    ctx.fillText(j.label, lx + (big ? 4 : 2), ly + (big ? 12 : 9));
+    ctx.fillText(j.label, lx + (big ? 4 : 2) * fs, ly + (big ? 12 : 9) * fs);
   }
 }
+
+let classStyleName = null;
+function openClassStyle(name, e) {
+  classStyleName = name;
+  const cs = classStyle[name] || {};
+  document.getElementById('csp-name').textContent = name;
+  document.getElementById('csp-opacity').value = cs.opacity === undefined || cs.opacity === null ? -1 : Math.round(cs.opacity * 100);
+  document.getElementById('csp-bright').value = Math.round((cs.bright || 0) * 100);
+  document.getElementById('csp-label').checked = cs.label !== false;
+  document.getElementById('csp-tint').checked = !hiddenTintClasses.has(name);
+  classStyleLabels();
+  const pop = document.getElementById('class-style-pop');
+  pop.style.left = Math.min(window.innerWidth - 210, e.clientX + 10) + 'px';
+  pop.style.top = Math.min(window.innerHeight - 140, e.clientY - 10) + 'px';
+  pop.classList.add('visible');
+}
+function classStyleLabels() {
+  const o = parseInt(document.getElementById('csp-opacity').value);
+  document.getElementById('csp-opacity-v').textContent = o < 0 ? 'auto' : o + '%';
+  document.getElementById('csp-bright-v').textContent = document.getElementById('csp-bright').value;
+}
+function classStyleInput() {
+  if (!classStyleName) return;
+  const o = parseInt(document.getElementById('csp-opacity').value);
+  const b = parseInt(document.getElementById('csp-bright').value) / 100;
+  const cs = {};
+  if (o >= 0) cs.opacity = o / 100;
+  if (b) cs.bright = b;
+  if (!document.getElementById('csp-label').checked) cs.label = false;
+  if (Object.keys(cs).length) classStyle[classStyleName] = cs; else delete classStyle[classStyleName];
+  classStyleLabels();
+  applyClassStyle();
+}
+function resetClassStyle() {
+  if (!classStyleName) return;
+  delete classStyle[classStyleName];
+  hiddenTintClasses.delete(classStyleName);
+  document.getElementById('csp-tint').checked = true;
+  document.getElementById('csp-opacity').value = -1;
+  document.getElementById('csp-bright').value = 0;
+  document.getElementById('csp-label').checked = true;
+  classStyleLabels();
+  applyClassStyle();
+}
+function applyClassStyle() {
+  redrawAllGridCanvases();
+  if (modalOpen) renderModal();
+  document.querySelectorAll('.class-btn .cls-style').forEach(el => {
+    el.classList.toggle('custom', !!classStyle[el.parentElement.dataset.class] || hiddenTintClasses.has(el.parentElement.dataset.class));
+  });
+  saveSettings();
+}
+document.addEventListener('mousedown', e => {  // a click outside closes the popover
+  const pop = document.getElementById('class-style-pop');
+  if (pop.classList.contains('visible') && !pop.contains(e.target) && !e.target.classList.contains('cls-style')) pop.classList.remove('visible');
+});
 
 function toHex(c) {
   return c.startsWith('hsl') ? hslToHex(c) : c;
@@ -2933,7 +3031,9 @@ function updateZoomWindow(e, index) {
   // Draw regions
   const regions = editInGrid && gridEditIndex === index ? gridEditRegions : (cached.regions || []);
   const selectedIdx = editInGrid && gridEditIndex === index ? gridEditSelectedIdx : -1;
+  labelView = { rect: [srcX, srcY, srcX + srcSize, srcY + srcSize], scale: 1 };
   drawRegions(zoomCtx, regions, coords.x, coords.y, coords.w, coords.h, selectedIdx >= 0, selectedIdx, ZOOM_FACTOR);
+  labelView = null;
   
   // Draw in-progress drawing rect
   if (gridEditDrawing && drawingClass && gridEditIndex === index) {
@@ -3017,7 +3117,9 @@ function updateModalZoomWindow(e) {
   zoomCtx.drawImage(modalImg, 0, 0);
   
   // Draw regions
+  labelView = { rect: [srcX, srcY, srcX + srcSize, srcY + srcSize], scale: 1 };
   drawRegions(zoomCtx, modalRegions, 0, 0, modalCanvas.width, modalCanvas.height, modalSelectedIdx >= 0, modalSelectedIdx, ZOOM_FACTOR);
+  labelView = null;
   
   // Draw in-progress drawing rect
   if (modalDrawing && drawingClass) {
@@ -3261,7 +3363,9 @@ function renderModal() {
   modalCtx.clearRect(0, 0, modalCanvas.width, modalCanvas.height);
   modalCtx.drawImage(modalImg, 0, 0);
   
+  labelView = modalLabelView();
   drawRegions(modalCtx, modalRegions, 0, 0, modalCanvas.width, modalCanvas.height, true, modalSelectedIdx);
+  labelView = null;
   
   // Draw clone preview
   if (modalClonePreview) {
@@ -3529,6 +3633,7 @@ modalCanvas.addEventListener('mousemove', e => {
   }
 });
 
+document.getElementById('modal-canvas-container').addEventListener('scroll', () => { if (modalOpen) renderModal(); });
 modalCanvas.addEventListener('mouseleave', () => {
   if (setHover(null, -1)) renderModal();
   hideZoomWindow(modalCanvas);
@@ -4117,5 +4222,13 @@ document.getElementById('hotkey-input').addEventListener('keydown', e => {
   });
 })();
 </script>
+<div id="class-style-pop">
+  <div style="font-weight:bold;margin-bottom:4px" id="csp-name"></div>
+  <div class="row"><label>Opacity</label><input type="range" id="csp-opacity" min="-1" max="100" oninput="classStyleInput()"><span class="val" id="csp-opacity-v"></span></div>
+  <div class="row"><label>Brightness</label><input type="range" id="csp-bright" min="-100" max="100" oninput="classStyleInput()"><span class="val" id="csp-bright-v"></span></div>
+  <div class="row"><label>Tint</label><input type="checkbox" id="csp-tint" onchange="toggleClassTint(classStyleName, this.checked); applyClassStyle()"></div>
+  <div class="row"><label>Label</label><input type="checkbox" id="csp-label" onchange="classStyleInput()"></div>
+  <div class="row" style="justify-content:flex-end"><button class="btn btn-secondary btn-sm" onclick="resetClassStyle()">Reset</button></div>
+</div>
 </body>
 </html>
