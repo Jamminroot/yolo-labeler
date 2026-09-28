@@ -230,6 +230,8 @@ body.no-sidebar #sidebar { display: none; }
   PgUp/PgDn → Navigate pages<br>
   M → Toggle mark mode<br>
   Esc → Exit mark mode / close popup<br>
+  Click (no drag) on the selected box → select the next box under the cursor<br>
+  D column (classes) → Detect replaces only checked classes<br>
   ` / ~ → Toggle constraint violations on the card under the cursor<br>
   <br><b>Constraints</b> (sidebar, under classes): a broken rule shows as a pill next to the card's file name.
   Classes: comma-separated, empty or * = any.<br>
@@ -1056,7 +1058,7 @@ function renderClassButtons() {
   // Add header row
   const header = document.createElement('div');
   header.className = 'class-header';
-  header.innerHTML = `<span class="hdr-key">Key</span><span class="hdr-color"></span><span class="hdr-name">Class</span><span class="hdr-check" title="Count">C</span><span class="hdr-check" title="Ignore overlaps">O</span>`;
+  header.innerHTML = `<span class="hdr-key">Key</span><span class="hdr-color"></span><span class="hdr-name">Class</span><span class="hdr-check" title="Count">C</span><span class="hdr-check" title="Ignore overlaps">O</span><span class="hdr-check" title="Detect: the model replaces boxes of checked classes only">D</span>`;
   container.appendChild(header);
   
   for (const [idx, name] of Object.entries(classNames)) {
@@ -1064,11 +1066,12 @@ function renderClassButtons() {
     const color = colors[name] || '#888';
     const countChecked = countedClasses.has(name) ? 'checked' : '';
     const overlapChecked = ignoreOverlapClasses.has(name) ? 'checked' : '';
+    const detectChecked = noDetectClasses.has(name) ? '' : 'checked';
 
     const btn = document.createElement('div');
     btn.className = 'class-btn';
     btn.dataset.class = name;
-    btn.innerHTML = `<span class="key" onclick="event.stopPropagation();editHotkey('${name}')">${key}</span><span class="color" style="background:${color}" onclick="editColor('${name}', event)" title="Click to change color"></span><span class="class-name">${name}</span><span class="cls-style${classStyle[name] || hiddenTintClasses.has(name) ? ' custom' : ''}" title="Display: opacity, brightness, label" onclick="event.stopPropagation();openClassStyle('${name}', event)">⚙</span><input type="checkbox" class="class-check" ${countChecked} onclick="event.stopPropagation();toggleClassCount('${name}', this.checked)" title="Count"><input type="checkbox" class="class-check" ${overlapChecked} onclick="event.stopPropagation();toggleIgnoreOverlap('${name}', this.checked)" title="Ignore overlaps">`;
+    btn.innerHTML = `<span class="key" onclick="event.stopPropagation();editHotkey('${name}')">${key}</span><span class="color" style="background:${color}" onclick="editColor('${name}', event)" title="Click to change color"></span><span class="class-name">${name}</span><span class="cls-style${classStyle[name] || hiddenTintClasses.has(name) ? ' custom' : ''}" title="Display: opacity, brightness, label" onclick="event.stopPropagation();openClassStyle('${name}', event)">⚙</span><input type="checkbox" class="class-check" ${countChecked} onclick="event.stopPropagation();toggleClassCount('${name}', this.checked)" title="Count"><input type="checkbox" class="class-check" ${overlapChecked} onclick="event.stopPropagation();toggleIgnoreOverlap('${name}', this.checked)" title="Ignore overlaps"><input type="checkbox" class="class-check" ${detectChecked} onclick="event.stopPropagation();toggleDetectClass('${name}', this.checked)" title="Detect: the model replaces boxes of this class">`;
     btn.onclick = () => setDrawingClass(name);
     container.appendChild(btn);
     
@@ -1080,6 +1083,17 @@ function renderClassButtons() {
     btn2.querySelector('.key').onclick = (e) => { e.stopPropagation(); editHotkey(name); };
     modalContainer.appendChild(btn2);
   }
+}
+
+// Detect keeps the boxes of unchecked ("D" off) classes and replaces the checked ones with the model's
+let noDetectClasses = new Set();
+function toggleDetectClass(name, checked) {
+  if (checked) noDetectClasses.delete(name); else noDetectClasses.add(name);
+  saveSettings();
+}
+function mergeDetections(existing, detected) {
+  return (existing || []).filter(r => noDetectClasses.has(r.class))
+    .concat((detected || []).filter(r => !noDetectClasses.has(r.class)));
 }
 
 function toggleClassCount(className, checked) {
@@ -1685,6 +1699,7 @@ async function loadLabelCache() {
       if (s.hiddenTintClasses && Array.isArray(s.hiddenTintClasses)) {
         hiddenTintClasses = new Set(s.hiddenTintClasses);
       }
+      if (Array.isArray(s.noDetectClasses)) noDetectClasses = new Set(s.noDetectClasses);
       if (s.ignoreOverlapClasses && Array.isArray(s.ignoreOverlapClasses)) {
         ignoreOverlapClasses = new Set(s.ignoreOverlapClasses);
       }
@@ -1749,6 +1764,7 @@ async function saveSettings() {
     labelsOnHover: document.getElementById('labels-on-hover').checked,
     dimOthers: document.getElementById('dim-others').checked,
     ignoreOverlapClasses: Array.from(ignoreOverlapClasses),
+    noDetectClasses: Array.from(noDetectClasses),
     gridCols: document.getElementById('grid-cols').value,
     fullWidthMode: document.getElementById('full-width-mode').checked,
     mosaicMode: document.getElementById('mosaic-mode').checked,
@@ -1972,7 +1988,11 @@ function createGridItem(index, w, h, fullWidthMode = false) {
   canvas.height = h || Math.round(w * 9 / 16);
   canvas.addEventListener('mousedown', (e) => gridMouseDown(e, index));
   canvas.addEventListener('mousemove', (e) => { gridMouseMove(e, index); updateZoomWindow(e, index); updateGridCursor(e, index); });
-  canvas.addEventListener('mouseup', (e) => gridMouseUp(e, index));
+  canvas.addEventListener('mouseup', (e) => {
+    gridMouseUp(e, index);
+    const next = takeClickCycle(e);
+    if (next >= 0 && editInGrid && gridEditIndex === index) { gridEditSelectedIdx = next; redrawGridCanvas(index); refreshZoomWindow(); }
+  });
   canvas.addEventListener('mouseleave', (e) => { if (!gridZoomActive()) hideZoomWindow(e.target); else e.target.style.cursor = ''; if (setHover(null, -1)) redrawGridCanvas(index); });
   canvas.addEventListener('mousemove', (e) => {
     const cached = imageCache[images[index]];
@@ -2722,6 +2742,24 @@ let hoverRegion = { regions: null, idx: -1 };
 function isHovered(regions, i) {
   return hoverRegion.regions === regions && hoverRegion.idx === i;
 }
+// all boxes under the point, smallest first (boxPx: region -> [x, y, w, h] in canvas pixels)
+function hitsAt(regions, mx, my, boxPx) {
+  return regions.map((r, i) => [i, boxPx(r)]).filter(([, [x, y, w, h]]) => mx >= x && mx <= x + w && my >= y && my <= y + h)
+    .sort((a, b) => a[1][2] * a[1][3] - b[1][2] * b[1][3]).map(([i]) => i);
+}
+// A click that does not move and lands on the already selected box selects the next box under the cursor
+// (smallest -> largest, wrapping). Applied after the mouseup handlers finished with the current selection.
+let clickCycle = null;
+function armClickCycle(e, hits, sel) {
+  clickCycle = hits.length > 1 && hits.includes(sel) ? { x: e.clientX, y: e.clientY, hits, sel } : null;
+}
+function takeClickCycle(e) {
+  const c = clickCycle;
+  clickCycle = null;
+  if (!c || Math.abs(e.clientX - c.x) > 3 || Math.abs(e.clientY - c.y) > 3) return -1;
+  return c.hits[(c.hits.indexOf(c.sel) + 1) % c.hits.length];
+}
+
 function regionAt(regions, mx, my, ox, oy, iw, ih) {  // smallest box under the cursor
   let best = -1, bestA = Infinity;
   regions.forEach((r, i) => {
@@ -2989,6 +3027,9 @@ function gridMouseDown(e, index) {
   const coords = getCanvasCoords(canvas, index);
   if (!coords) return;
   
+  const gHits = hitsAt(gridEditRegions, mx, my, r => [coords.x + (r.box[0] - r.box[2]/2) * coords.w,
+    coords.y + (r.box[1] - r.box[3]/2) * coords.h, r.box[2] * coords.w, r.box[3] * coords.h]);
+  armClickCycle(e, gHits, gridEditSelectedIdx);
   // Check handles on selected region first
   if (gridEditSelectedIdx >= 0) {
     const handle = getGridHandleAtPoint(mx, my, gridEditRegions[gridEditSelectedIdx], coords);
@@ -3000,14 +3041,10 @@ function gridMouseDown(e, index) {
     }
   }
   
-  // Find clicked region
-  for (let i = gridEditRegions.length - 1; i >= 0; i--) {
-    const r = gridEditRegions[i];
-    const rx = coords.x + (r.box[0] - r.box[2]/2) * coords.w;
-    const ry = coords.y + (r.box[1] - r.box[3]/2) * coords.h;
-    const rw = r.box[2] * coords.w;
-    const rh = r.box[3] * coords.h;
-    if (mx >= rx && mx <= rx + rw && my >= ry && my <= ry + rh) {
+  // Find clicked region: the selected one if it is under the cursor (a still click then moves to the next), else the smallest
+  if (gHits.length) {
+    const i = gHits.includes(gridEditSelectedIdx) ? gridEditSelectedIdx : gHits[0];
+    {
       gridEditSelectedIdx = i;
       gridDragMode = 'move';
       gridDragStart = { x: mx, y: my };
@@ -3892,6 +3929,9 @@ modalCanvas.addEventListener('mousedown', e => {
     return;
   }
   
+  const mHits = hitsAt(modalRegions, mx, my, r => [(r.box[0] - r.box[2]/2) * modalCanvas.width,
+    (r.box[1] - r.box[3]/2) * modalCanvas.height, r.box[2] * modalCanvas.width, r.box[3] * modalCanvas.height]);
+  armClickCycle(e, mHits, modalSelectedIdx);
   // Check handles on selected region first
   if (modalSelectedIdx >= 0) {
     const handle = getHandleAtPoint(mx, my, modalRegions[modalSelectedIdx]);
@@ -3903,14 +3943,10 @@ modalCanvas.addEventListener('mousedown', e => {
     }
   }
   
-  // Find region
-  for (let i = modalRegions.length - 1; i >= 0; i--) {
-    const r = modalRegions[i];
-    const rx = (r.box[0] - r.box[2]/2) * modalCanvas.width;
-    const ry = (r.box[1] - r.box[3]/2) * modalCanvas.height;
-    const rw = r.box[2] * modalCanvas.width;
-    const rh = r.box[3] * modalCanvas.height;
-    if (mx >= rx && mx <= rx + rw && my >= ry && my <= ry + rh) {
+  // Find region: the selected one if it is under the cursor (a still click then moves to the next), else the smallest
+  if (mHits.length) {
+    const i = mHits.includes(modalSelectedIdx) ? modalSelectedIdx : mHits[0];
+    {
       modalSelectedIdx = i;
       modalDragMode = 'move';
       modalDragStart = { x: mx, y: my };
@@ -3928,6 +3964,15 @@ modalCanvas.addEventListener('mousedown', e => {
   renderModal();
   updateModalInfo();
   refreshZoomWindow();
+});
+
+modalCanvas.addEventListener('mouseup', e => {  // after the main mouseup handler (registered below) is done
+  setTimeout(() => {
+    const next = takeClickCycle(e);
+    if (next < 0 || !modalOpen) return;
+    modalSelectedIdx = next;
+    renderModalRegionsList(); renderModal(); updateModalInfo(); refreshZoomWindow();
+  }, 0);
 });
 
 modalCanvas.addEventListener('mousemove', e => {
@@ -4107,7 +4152,7 @@ async function modalDetect() {
   const path = images[modalIndex];
   const detected = await fetchDetections(path);
   if (detected && detected.length > 0) {
-    modalRegions = detected;
+    modalRegions = mergeDetections(modalRegions, detected);
     modalSelectedIdx = -1;
     unsavedDetected.add(path);
     updateGridItemUnsavedState(modalIndex);
@@ -4122,9 +4167,12 @@ async function modalDetect() {
 async function runGridDetection(index) {
   const path = images[index];
   setStatus(`Detecting on ${path.split(/[/\\]/).pop()}...`);
-  const detected = await fetchDetections(path);
-  if (detected && detected.length > 0) {
+  const raw = await fetchDetections(path);
+  if (raw && raw.length > 0) {
+    const editing = editInGrid && gridEditIndex === index;
+    const detected = mergeDetections(editing ? gridEditRegions : imageCache[path].regions, raw);
     imageCache[path].regions = detected;
+    if (editing) { gridEditRegions = JSON.parse(JSON.stringify(detected)); gridEditSelectedIdx = -1; }
     unsavedDetected.add(path);
     updateGridItemUnsavedState(index);
     
