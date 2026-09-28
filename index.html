@@ -57,7 +57,38 @@ body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; hei
 
 .grid-item-footer { background: #111; padding: 4px 6px; }
 .grid-item-footer-top { display: flex; align-items: center; gap: 6px; }
-.grid-item-name { font-size: 10px; color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+.grid-item-name { font-size: 10px; color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; position: relative; }
+.grid-item-name .cpills { position: absolute; right: 0; top: 50%; transform: translateY(-50%); display: flex; gap: 3px; }
+.grid-item-name .cpill { font-size: 9px; font-weight: bold; padding: 0 6px; border-radius: 8px; line-height: 13px; white-space: nowrap; }
+#constraints { display: flex; flex-direction: column; gap: 6px; }
+.crule { background: #0f3460; border: 1px solid #333; border-left: 4px solid var(--c, #ff5252); border-radius: 4px; padding: 4px 5px; display: flex; flex-direction: column; gap: 3px; font-size: 11px; }
+.crule.off { opacity: 0.45; }
+.crule:hover { border-color: var(--c, #ff5252); }
+.grid-item-name .cpill { cursor: default; }
+.crule .crow { display: flex; gap: 3px; align-items: center; }
+.crule input[type=text], .crule select { background: #16213e; border: 1px solid #333; color: #eee; border-radius: 3px; padding: 2px 4px; font-size: 11px; min-width: 0; flex: 1; }
+.crule input[type=color] { width: 20px; height: 18px; padding: 0; border: none; background: none; flex: none; }
+.crule .cnum { flex: 0 0 34px !important; }
+.crule .chit { color: #aaa; font-family: monospace; font-size: 10px; flex: none; }
+.crule .cdel { background: none; border: none; color: #888; cursor: pointer; font-size: 11px; flex: none; }
+.crule .cdel:hover { color: #e94560; }
+/* dataset loader and view settings live in popups opened from the progress row */
+#header, #settings-bar { display: none; position: fixed; top: 48px; left: 50%; transform: translateX(-50%); z-index: 2500; width: min(960px, 96vw);
+                         border: 1px solid #e94560; border-radius: 6px; box-shadow: 0 8px 30px rgba(0,0,0,0.6); }
+#header.visible, #settings-bar.visible { display: flex; }
+#corner { position: fixed; top: 6px; right: 8px; z-index: 2600; display: flex; gap: 4px; align-items: center; }
+#corner .btn { padding: 4px 9px; }
+#sidebar { padding-top: 40px !important; }
+body.no-sidebar #sidebar { display: none; }
+#side-pages { display: flex; flex-direction: column; gap: 6px; font-size: 11px; }
+#side-pages .progress-bar { flex: none; width: 100%; max-width: none; background: #0f3460; }
+#side-pages #pagination { display: flex; gap: 3px; align-items: center; justify-content: space-between; }
+#side-pages #pagination .btn { padding: 3px 7px; }
+#side-pages #page-input { width: 40px; padding: 3px 4px; }
+#side-pages #pagination span { font-size: 11px; }
+#help-pop { display: none; position: fixed; top: 48px; right: 12px; z-index: 3000; background: #1a1a2e; border: 1px solid #e94560; border-radius: 6px; padding: 10px 14px; font-size: 12px; color: #ccc; line-height: 1.6; max-width: 420px; }
+#help-pop.visible { display: block; }
+#help-pop b { color: #e94560; }
 .grid-item-buttons { display: flex; visibility: hidden; gap: 4px; }  /* space kept: hovering must not resize the card */
 .grid-item:hover .grid-item-buttons { visibility: visible; }
 .grid-item-btn { padding: 2px 8px; border-radius: 3px; border: none; cursor: pointer; font-size: 10px; font-weight: bold; }
@@ -177,6 +208,35 @@ body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; hei
   </select>
   <button class="btn btn-secondary btn-sm" onclick="openSplitModal()" title="Split/reshuffle train and val sets">⚡ Split</button>
   <input type="text" id="model-path" placeholder="Model path (optional)" style="width:250px;" onchange="saveSettings()">
+  <div style="flex-basis:100%;height:0"></div>
+  <button class="btn btn-sm btn-secondary" onclick="saveAllUnsavedDetected()" title="Save all images with unsaved detections">Save Detected</button>
+  <label style="margin-left:8px;font-size:12px;"><input type="checkbox" id="only-with-regions" onchange="saveSettings()"> Only with regions</label>
+  <button class="btn btn-sm btn-secondary" onclick="toggleFilterPopup()" id="filter-btn" style="margin-left:8px;">Filter</button>
+  <button class="btn btn-sm btn-secondary" id="mark-mode-btn" onclick="toggleMarkMode()" style="margin-left:4px;">Mark</button>
+</div>
+<div id="help-pop" onclick="event.stopPropagation()">
+  <b>Shortcuts</b><br>
+  Hotkey → Draw class<br>
+  Alt+Hotkey → Change class<br>
+  Ctrl+Drag → Clone region<br>
+  Shift+Drag → Lock H/V axis<br>
+  R → Run detection<br>
+  Del → Delete region<br>
+  Arrows → Move region 1px<br>
+  Shift+Arrows → Move 5px<br>
+  E/Enter → Expand image<br>
+  Space → Save page &amp; next<br>
+  PgUp/PgDn → Navigate pages<br>
+  M → Toggle mark mode<br>
+  Esc → Exit mark mode / close popup<br>
+  <br><b>Constraints</b> (sidebar, under classes): a broken rule shows as a pill next to the card's file name.
+  Classes: comma-separated, empty or * = any.<br>
+  count: number of A boxes within min..max<br>
+  inside: every A lies inside some B (%: share of A covered by B; empty/0 = A's centre in B)<br>
+  contains: every A contains min..max B (by B's centre)<br>
+  overlap: no A and B overlap more than % of the smaller box<br>
+  size: no A differs in area from the median A by more than %<br>
+  ×N on a pill = number of offending boxes; the number on a rule = cards breaking it among loaded ones.
 </div>
 
 <div id="settings-bar">
@@ -226,23 +286,7 @@ body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; hei
   <div class="setting-group">
     <label><input type="checkbox" id="edit-in-grid" onchange="toggleEditInGrid(); saveSettings()"> Edit in grid</label>
   </div>
-  <button class="btn btn-secondary btn-sm" onclick="openHotkeyEditor()">Edit Hotkeys</button>
-</div>
-
-<div id="progress-section">
-  <div class="progress-bar"><div class="progress-bar-fill" id="progress-fill"></div></div>
-  <span id="progress-text">0 / 0</span>
-  <div style="flex:1"></div>
-  <div id="pagination">
-    <button class="btn btn-secondary btn-sm" onclick="firstPage()">««</button>
-    <button class="btn btn-secondary btn-sm" onclick="prevPage()">‹</button>
-    <span>Page <input type="number" id="page-input" value="1" min="1" onchange="goToPage()"> / <span id="total-pages">1</span></span>
-    <button class="btn btn-secondary btn-sm" onclick="nextPage()">›</button>
-    <button class="btn btn-secondary btn-sm" onclick="lastPage()">»»</button>
-  </div>
-  <button class="btn btn-sm" onclick="saveAllOnPage()">Save Page</button>
-  <button class="btn btn-sm btn-secondary" onclick="saveAllUnsavedDetected()" title="Save all images with unsaved detections">Save Detected</button>
-  <label style="margin-left:8px;font-size:12px;"><input type="checkbox" id="only-with-regions" onchange="saveSettings()"> Only with regions</label>
+  <div class="setting-group">
   <label style="margin-left:8px;font-size:12px;" title="What counts as an overlap. any: boxes intersect at all; >50% / >90%: intersection covers more than that share of the smaller box; full: one box lies entirely inside the other">Overlap:
     <select id="overlap-mode" onchange="saveSettings(); redrawOverlaps()" style="font-size:11px;">
       <option value="none">none</option>
@@ -258,8 +302,15 @@ body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; hei
       <option value="box">box</option>
     </select></label>
   <label style="font-size:11px;margin-left:6px;" title="Brightness of the overlap highlight">glow <input type="range" id="overlap-bright" min="0" max="100" value="100" style="width:70px;vertical-align:middle;" oninput="redrawOverlaps()" onchange="saveSettings()"></label>
-  <button class="btn btn-sm btn-secondary" onclick="toggleFilterPopup()" id="filter-btn" style="margin-left:8px;">Filter</button>
-  <button class="btn btn-sm btn-secondary" id="mark-mode-btn" onclick="toggleMarkMode()" style="margin-left:4px;">Mark</button>
+  </div>
+  <button class="btn btn-secondary btn-sm" onclick="openHotkeyEditor()">Edit Hotkeys</button>
+</div>
+
+<div id="corner">
+  <button class="btn btn-secondary btn-sm pop-toggle" id="dataset-btn" onclick="togglePop('header')" title="Dataset: load, pages, save, filter, mark">📂</button>
+  <button class="btn btn-secondary btn-sm pop-toggle" onclick="togglePop('settings-bar')" title="Display settings">⚙</button>
+  <button class="btn btn-secondary btn-sm pop-toggle" onclick="togglePop('help-pop')" title="Shortcuts and constraint rules">?</button>
+  <button class="btn btn-secondary btn-sm" id="sidebar-btn" onclick="toggleSidebar()" title="Hide / show the sidebar">⇥</button>
 </div>
 
 <div id="mark-actions" style="display:none">
@@ -277,25 +328,26 @@ body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; hei
     <div id="label-counts-footer"></div>
   </div>
   <div id="sidebar">
+    <div id="side-pages">
+      <div id="side-dataset" style="font-weight:bold;color:#ccc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>
+  <div class="progress-bar"><div class="progress-bar-fill" id="progress-fill"></div></div>
+  <span id="progress-text">0 / 0</span>
+  <div id="pagination">
+    <button class="btn btn-secondary btn-sm" onclick="firstPage()">««</button>
+    <button class="btn btn-secondary btn-sm" onclick="prevPage()">‹</button>
+    <span><input type="number" id="page-input" value="1" min="1" onchange="goToPage()"> / <span id="total-pages">1</span></span>
+    <button class="btn btn-secondary btn-sm" onclick="nextPage()">›</button>
+    <button class="btn btn-secondary btn-sm" onclick="lastPage()">»»</button>
+  </div>
+  <button class="btn btn-sm" onclick="saveAllOnPage()" title="Space: save page &amp; next">Save Page</button>
+    </div>
     <h3>Classes (click key to edit)</h3>
     <div id="class-buttons"></div>
     <button id="add-class-btn" class="btn btn-sm" onclick="showAddClassPrompt()" style="width:100%;margin:8px 0;">+ Add Class</button>
-    <div class="help-text">
-      <b>Shortcuts:</b><br>
-      Hotkey → Draw class<br>
-      Alt+Hotkey → Change class<br>
-      Ctrl+Drag → Clone region<br>
-      Shift+Drag → Lock H/V axis<br>
-      R → Run detection<br>
-      Del → Delete region<br>
-      Arrows → Move region 1px<br>
-      Shift+Arrows → Move 5px<br>
-      E/Enter → Expand image<br>
-      Space → Save page & next<br>
-      PgUp/PgDn → Navigate pages<br>
-      M → Toggle mark mode<br>
-      Esc → Exit mark mode
-    </div>
+    <h3 style="margin-top:6px">Constraints</h3>
+    <datalist id="constraint-classes"></datalist>
+    <div id="constraints"></div>
+    <button class="btn btn-sm btn-secondary" onclick="addConstraint()" style="width:100%;">+ Rule</button>
   </div>
 </div>
 
@@ -735,6 +787,7 @@ function updateGridItemUnsavedState(index) {
 function updateGridItemCounts(index) {
   const item = document.querySelector(`.grid-item[data-index="${index}"]`);
   if (!item) return;
+  updateConstraintPills(index);
   
   const countsDiv = item.querySelector('.grid-item-counts');
   if (!countsDiv) return;
@@ -773,6 +826,15 @@ function updateGridItemCounts(index) {
 }
 
 async function loadDataset() {
+  await loadDatasetInner();
+  if (datasetBase) {
+    document.getElementById('header').classList.remove('visible');
+    const btn = document.getElementById('dataset-btn');
+    btn.title = datasetBase;
+    updatePagination();
+  }
+}
+async function loadDatasetInner() {
   yamlPath = document.getElementById('yaml-path').value.trim();
   if (!yamlPath) return;
   
@@ -1243,6 +1305,186 @@ async function createYaml() {
   }
 }
 
+// ---- Constraints: user-configured rules checked per image; a broken rule = a pill next to the file name ----
+// rule: {name, color, on, type: count|inside|contains|overlap|size, a, b (class lists), min, max, t (%)}
+let constraints = [];
+const CONSTRAINT_FIELDS = { count: ['a', 'min', 'max'], inside: ['a', 'b', 't'], contains: ['a', 'b', 'min', 'max'],
+                            overlap: ['a', 'b', 't'], size: ['a', 't'] };
+const CONSTRAINT_PALETTE = ['#ff5252', '#ffab40', '#ffd740', '#69f0ae', '#40c4ff', '#b388ff', '#ff80ab', '#a7ffeb'];
+
+function classMatcher(list) {
+  const names = String(list || '').split(',').map(x => x.trim()).filter(x => x && x !== '*');
+  return names.length ? (c => names.includes(c)) : (() => true);
+}
+function xyxy(r) { const [cx, cy, w, h] = r.box; return [cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2]; }
+function areaOf(b) { return Math.max(0, b[2] - b[0]) * Math.max(0, b[3] - b[1]); }
+function interOf(a, b) { return areaOf([Math.max(a[0], b[0]), Math.max(a[1], b[1]), Math.min(a[2], b[2]), Math.min(a[3], b[3])]); }
+function centreIn(a, b) { const x = (a[0] + a[2]) / 2, y = (a[1] + a[3]) / 2; return b[0] <= x && x <= b[2] && b[1] <= y && y <= b[3]; }
+function num(v, d) { const n = parseFloat(v); return isNaN(n) ? d : n; }
+
+// offending boxes of a rule: {broken, boxes}; a box is never compared with itself.
+// count: all A boxes when the number is out of range (none to show when there are too few)
+function constraintOffenders(rule, regions) {
+  const A = regions.filter(r => classMatcher(rule.a)(r.class));
+  const B = regions.filter(r => classMatcher(rule.b)(r.class));
+  const lo = num(rule.min, 0), hi = num(rule.max, Infinity), t = num(rule.t, 0) / 100;
+  let bad = [];
+  if (rule.type === 'count') {
+    const broken = A.length < lo || A.length > hi;
+    return { broken, boxes: broken ? A : [] };
+  }
+  if (rule.type === 'inside')
+    bad = A.filter(ra => { const a = xyxy(ra);
+      return !B.some(rb => rb !== ra && (t > 0 ? interOf(a, xyxy(rb)) >= t * areaOf(a) : centreIn(a, xyxy(rb)))); });
+  else if (rule.type === 'contains')
+    bad = A.filter(ra => { const n = B.filter(rb => rb !== ra && centreIn(xyxy(rb), xyxy(ra))).length; return n < lo || n > hi; });
+  else if (rule.type === 'overlap') {
+    const set = new Set();
+    A.forEach(ra => B.forEach(rb => {
+      if (ra === rb) return;
+      const a = xyxy(ra), b = xyxy(rb);
+      if (interOf(a, b) > t * Math.min(areaOf(a), areaOf(b))) { set.add(ra); set.add(rb); }
+    }));
+    bad = [...set];
+  } else if (rule.type === 'size' && A.length >= 2) {
+    const s = A.map(r => areaOf(xyxy(r))).sort((x, y) => x - y), med = s[Math.floor(s.length / 2)];
+    bad = A.filter(r => Math.abs(areaOf(xyxy(r)) / med - 1) > t);
+  }
+  return { broken: bad.length > 0, boxes: bad };
+}
+// number of offending boxes (count rule: 1 when broken)
+function checkConstraint(rule, regions) {
+  const o = constraintOffenders(rule, regions);
+  return !o.broken ? 0 : rule.type === 'count' ? 1 : o.boxes.length;
+}
+
+function brokenConstraints(regions) {
+  return constraints.filter(c => c.on !== false && c.name).map(c => [c, checkConstraint(c, regions || [])]).filter(([, n]) => n > 0);
+}
+
+// hovered rule (sidebar card: every card; pill: that card's regions only)
+let constraintFocus = null, constraintFocusRegions = null;
+function setConstraintFocus(rule, regions = null) {
+  constraintFocus = rule; constraintFocusRegions = regions;
+  redrawAllGridCanvases();
+  if (modalOpen) renderModal();
+}
+function drawConstraintFocus(ctx, regions, ox, oy, iw, ih, lineScale) {
+  if (!constraintFocus || (constraintFocusRegions && constraintFocusRegions !== regions)) return;
+  const color = constraintFocus.color || '#ff5252';
+  ctx.save();
+  for (const r of constraintOffenders(constraintFocus, regions).boxes) {
+    const [x1, y1, x2, y2] = xyxy(r), pad = 3 * lineScale;
+    const x = ox + x1 * iw - pad, y = oy + y1 * ih - pad, w = (x2 - x1) * iw + 2 * pad, h = (y2 - y1) * ih + 2 * pad;
+    ctx.globalAlpha = 0.25; ctx.fillStyle = color; ctx.fillRect(x, y, w, h);
+    ctx.globalAlpha = 1; ctx.lineWidth = 3 * lineScale;
+    ctx.strokeStyle = '#000'; ctx.strokeRect(x - lineScale, y - lineScale, w + 2 * lineScale, h + 2 * lineScale);
+    ctx.strokeStyle = color; ctx.strokeRect(x, y, w, h);
+  }
+  ctx.restore();
+}
+
+// called on every redraw (animations included): touch the DOM only when the result changes
+function updateConstraintPills(index, regions) {
+  const el = document.querySelector(`.grid-item[data-index="${index}"] .cpills`);
+  if (!el) return;
+  regions = regions || imageCache[images[index]]?.regions;
+  const broken = brokenConstraints(regions);
+  const key = broken.map(([c, n]) => constraints.indexOf(c) + ':' + n + ':' + c.name + c.color).join('|');
+  if (el.dataset.key !== key) {
+    el.dataset.key = key;
+    el.innerHTML = '';
+    for (const [c, n] of broken) {
+      const pill = document.createElement('span');
+      pill.className = 'cpill';
+      pill.style.background = c.color || '#ff5252';
+      pill.style.color = getContrastColor(c.color || '#ff5252');
+      pill.textContent = n > 1 ? `${c.name} ×${n}` : c.name;
+      pill.title = `${c.type}: ${n} offending box(es)`;
+      pill.onmouseenter = () => {
+        const i = index, cached = imageCache[images[i]];
+        setConstraintFocus(c, editInGrid && gridEditIndex === i ? gridEditRegions : cached?.regions);
+      };
+      pill.onmouseleave = () => setConstraintFocus(null);
+      el.appendChild(pill);
+    }
+  }
+  if (!updateConstraintPills.t)  // rule counters follow label loads / edits, throttled
+    updateConstraintPills.t = setTimeout(() => { updateConstraintPills.t = null; updateConstraintHits(); }, 400);
+}
+
+function addConstraint() {
+  constraints.push({ name: 'rule' + (constraints.length + 1), color: CONSTRAINT_PALETTE[constraints.length % CONSTRAINT_PALETTE.length],
+                     on: true, type: 'count', a: '', b: '', min: '', max: '1', t: '90' });
+  constraintsChanged(true);
+}
+function constraintsChanged(rerender) {
+  if (rerender) renderConstraints(); else updateConstraintHits();
+  if (constraintFocus) { redrawAllGridCanvases(); if (modalOpen) renderModal(); }
+  const start = currentPage * perPage, end = Math.min(start + perPage, images.length);
+  for (let i = start; i < end; i++) updateConstraintPills(i);
+  saveSettings();
+}
+function renderConstraints() {
+  document.getElementById('constraint-classes').innerHTML = Object.values(classNames).map(n => `<option value="${n}">`).join('');
+  const box = document.getElementById('constraints');
+  box.innerHTML = '';
+  constraints.forEach((c, i) => {
+    const card = document.createElement('div');
+    card.className = 'crule' + (c.on === false ? ' off' : '');
+    card.style.setProperty('--c', c.color || '#ff5252');
+    card.onmouseenter = () => setConstraintFocus(c);
+    card.onmouseleave = () => setConstraintFocus(null);
+    const row = (...els) => { const r = document.createElement('div'); r.className = 'crow'; r.append(...els); card.appendChild(r); };
+    const field = (key, ph, cls = '', type = 'text') => {
+      const inp = document.createElement('input');
+      inp.type = type; inp.placeholder = ph; inp.title = ph; inp.value = c[key] ?? '';
+      if (cls) inp.className = cls;
+      if (key === 'a' || key === 'b') inp.setAttribute('list', 'constraint-classes');
+      inp.oninput = () => { c[key] = inp.value; if (key === 'color') card.style.setProperty('--c', inp.value); constraintsChanged(false); };
+      return inp;
+    };
+    const on = document.createElement('input');
+    on.type = 'checkbox'; on.checked = c.on !== false; on.title = 'enabled';
+    on.onchange = () => { c.on = on.checked; card.classList.toggle('off', !on.checked); constraintsChanged(false); };
+    const del = document.createElement('button');
+    del.className = 'cdel'; del.textContent = '✕'; del.title = 'delete rule';
+    del.onclick = () => { constraints.splice(i, 1); constraintsChanged(true); };
+    const type = document.createElement('select');
+    Object.keys(CONSTRAINT_FIELDS).forEach(k => type.add(new Option(k, k, false, k === c.type)));
+    type.onchange = () => { c.type = type.value; constraintsChanged(true); };
+    const hit = document.createElement('span');
+    hit.className = 'chit'; hit.dataset.rule = i; hit.title = 'cards breaking the rule / loaded cards';
+    row(on, field('color', 'colour', '', 'color'), field('name', 'name'), del);
+    const f = CONSTRAINT_FIELDS[c.type] || [];
+    row(type, hit);
+    if (f.includes('a')) row(field('a', 'A classes'));
+    if (f.includes('b')) row(field('b', 'B classes'));
+    const nums = ['min', 'max', 't'].filter(k => f.includes(k)).map(k => field(k, k === 't' ? '%' : k, 'cnum'));
+    if (nums.length) row(...nums);
+    box.appendChild(card);
+  });
+  updateConstraintHits();
+}
+// how many already-loaded images break each rule
+function updateConstraintHits() {
+  const loaded = Object.values(imageCache).filter(x => Array.isArray(x.regions));
+  document.querySelectorAll('#constraints .chit').forEach(el => {
+    const c = constraints[+el.dataset.rule];
+    el.textContent = c ? loaded.filter(x => checkConstraint(c, x.regions) > 0).length + '/' + loaded.length : '';
+  });
+}
+const POPS = ['header', 'settings-bar', 'help-pop'];
+function togglePop(id) {
+  POPS.forEach(p => document.getElementById(p).classList.toggle('visible', p === id && !document.getElementById(p).classList.contains('visible')));
+}
+function closePops() { POPS.forEach(p => document.getElementById(p).classList.remove('visible')); }
+document.addEventListener('mousedown', e => {  // a click outside closes the popups
+  if (e.target.closest('.pop-toggle') || POPS.some(p => document.getElementById(p).contains(e.target))) return;
+  if (!datasetBase) return;  // the loader stays open until a dataset is loaded
+  closePops();
+});
+
 function openHotkeyEditor() {
   // Could open a full editor, for now just show info
   alert('Click on the key badge next to any class to change its hotkey.');
@@ -1406,6 +1648,8 @@ async function loadLabelCache() {
         countedClasses = new Set(s.countedClasses);
       }
       if (s.classStyle && typeof s.classStyle === 'object') classStyle = s.classStyle;
+      constraints = Array.isArray(s.constraints) ? s.constraints : [];
+      renderConstraints();
       if (s.overlapBright !== undefined) document.getElementById('overlap-bright').value = s.overlapBright;
       if (s.labelsOnHover !== undefined) document.getElementById('labels-on-hover').checked = s.labelsOnHover;
       if (s.dimOthers !== undefined) document.getElementById('dim-others').checked = s.dimOthers;
@@ -1444,7 +1688,7 @@ async function loadLabelCache() {
 }
 
 // Settings that follow the dataset; everything else (view, grid, highlight, class colours/toggles) is global
-const DATASET_ONLY_SETTINGS = ['modelPath', 'autoDetect', 'autosaveOnDetect'];
+const DATASET_ONLY_SETTINGS = ['modelPath', 'autoDetect', 'autosaveOnDetect', 'constraints'];
 const GLOBAL_SETTINGS_KEY = 'yoloLabelerSettings';
 
 function loadGlobalSettings() {
@@ -1481,7 +1725,8 @@ async function saveSettings() {
     mosaicMode: document.getElementById('mosaic-mode').checked,
     gridRows: document.getElementById('grid-rows').value,
     paginateGrid: document.getElementById('paginate-grid').checked,
-    customColors: customColors
+    customColors: customColors,
+    constraints: constraints
   };
   const globalSettings = {...settings};
   DATASET_ONLY_SETTINGS.forEach(k => delete globalSettings[k]);
@@ -1578,6 +1823,19 @@ function updatePagination() {
   document.getElementById('total-pages').textContent = totalPages;
   document.getElementById('page-input').value = currentPage + 1;
   document.getElementById('page-input').max = totalPages;
+  // the dataset popup is usually closed: its name sits above the pages in the sidebar
+  if (datasetBase) {
+    const el = document.getElementById('side-dataset');
+    el.textContent = datasetBase.split(/[/\\]/).filter(Boolean).pop();
+    el.title = datasetBase;
+  }
+}
+function toggleSidebar(force) {
+  const hide = force ?? !document.body.classList.contains('no-sidebar');
+  document.body.classList.toggle('no-sidebar', hide);
+  document.getElementById('sidebar-btn').textContent = hide ? '⇤' : '⇥';
+  try { localStorage.setItem('yoloLabelerNoSidebar', hide ? '1' : ''); } catch (e) {}
+  if (images.length > 0) renderGrid();
 }
 
 function updateProgress() {
@@ -1713,6 +1971,9 @@ function createGridItem(index, w, h, fullWidthMode = false) {
   const nameSpan = document.createElement('div');
   nameSpan.className = 'grid-item-name';
   nameSpan.textContent = filename;
+  const pills = document.createElement('span');
+  pills.className = 'cpills';
+  nameSpan.appendChild(pills);
   footerTop.appendChild(nameSpan);
   
   const buttonsDiv = document.createElement('div');
@@ -2249,6 +2510,7 @@ function renderModalCanvas() {
 function drawRegions(ctx, regions, ox, oy, iw, ih, showHandles, selectedIdx = -1, lineScale = 1) {
   drawRegionsBase(ctx, regions, ox, oy, iw, ih, showHandles, selectedIdx, lineScale);
   if (overlapAreaMode()) drawOverlapAreas(ctx, findOverlapRects(regions), ox, oy, iw, ih, lineScale);
+  drawConstraintFocus(ctx, regions, ox, oy, iw, ih, lineScale);
 }
 
 function drawRegionsBase(ctx, regions, ox, oy, iw, ih, showHandles, selectedIdx = -1, lineScale = 1) {
@@ -2936,6 +3198,7 @@ function redrawGridCanvas(index) {
   const selectedIdx = isEditing ? gridEditSelectedIdx : -1;
   drawRegions(ctx, regions, coords.x, coords.y, coords.w, coords.h, isEditing, selectedIdx);
   if (lastDrawAnimated) animatedGridItems.add(index); else animatedGridItems.delete(index);
+  updateConstraintPills(index, regions);
 
   // Draw clone preview (only for edited item)
   if (isEditing && gridClonePreview) {
@@ -4156,6 +4419,10 @@ function changeSelectedClass(newClass) {
 // Keyboard
 document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if (e.key === 'Escape' && POPS.some(p => document.getElementById(p).classList.contains('visible'))) {
+    closePops();
+    return;
+  }
   if (document.getElementById('hotkey-modal').classList.contains('visible')) {
     if (e.key === 'Escape') closeHotkeyModal();
     return;
@@ -4315,6 +4582,8 @@ document.getElementById('hotkey-input').addEventListener('keydown', e => {
   if (savedYaml) {
     document.getElementById('yaml-path').value = savedYaml;
   }
+  togglePop('header');  // nothing loaded yet: show the loader
+  try { if (localStorage.getItem('yoloLabelerNoSidebar')) toggleSidebar(true); } catch (e) {}
   
   window.addEventListener('resize', () => {
     if (images.length > 0) renderGrid();
