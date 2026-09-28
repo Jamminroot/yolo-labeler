@@ -5,31 +5,31 @@
 <title>YOLO Labeler</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
-body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; height: 100vh; display: flex; flex-direction: column; }
+body { font-family: system-ui, sans-serif; background: #1c1c1e; color: #eee; height: 100vh; display: flex; flex-direction: column; }
 
-#header { background: #16213e; padding: 10px 15px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; border-bottom: 1px solid #333; }
-#header input[type="text"] { padding: 8px 12px; background: #0f3460; border: 1px solid #333; color: #eee; border-radius: 4px; }
-#header select { padding: 8px; background: #0f3460; border: 1px solid #333; color: #eee; border-radius: 4px; }
+#header { background: #252528; padding: 10px 15px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; border-bottom: 1px solid #333; }
+#header input[type="text"] { padding: 8px 12px; background: #34343a; border: 1px solid #333; color: #eee; border-radius: 4px; }
+#header select { padding: 8px; background: #34343a; border: 1px solid #333; color: #eee; border-radius: 4px; }
 
 .btn { padding: 8px 16px; background: #e94560; border: none; color: white; cursor: pointer; border-radius: 4px; font-size: 13px; }
 .btn:hover { background: #ff6b6b; }
 .btn:disabled { background: #555; cursor: not-allowed; }
-.btn-secondary { background: #0f3460; border: 1px solid #e94560; }
+.btn-secondary { background: #34343a; border: 1px solid #e94560; }
 .btn-secondary.active { background: #e94560; }
 .btn-sm { padding: 5px 10px; font-size: 12px; }
 
-#settings-bar { background: #0f3460; padding: 8px 15px; display: flex; align-items: center; gap: 15px; flex-wrap: wrap; border-bottom: 1px solid #333; }
+#settings-bar { background: #34343a; padding: 8px 15px; display: flex; align-items: center; gap: 15px; flex-wrap: wrap; border-bottom: 1px solid #333; }
 .setting-group { display: flex; align-items: center; gap: 8px; }
 .setting-group label { font-size: 12px; color: #aaa; }
 
-#progress-section { background: #162447; padding: 8px 15px; display: flex; align-items: center; gap: 15px; flex-wrap: wrap; }
-.progress-bar { flex: 1; height: 8px; background: #16213e; border-radius: 4px; overflow: hidden; max-width: 400px; }
+#progress-section { background: #2b2b2e; padding: 8px 15px; display: flex; align-items: center; gap: 15px; flex-wrap: wrap; }
+.progress-bar { flex: 1; height: 8px; background: #252528; border-radius: 4px; overflow: hidden; max-width: 400px; }
 .progress-bar-fill { height: 100%; background: #e94560; transition: width 0.3s; }
 #progress-text { font-size: 13px; color: #aaa; }
 
 #pagination { display: flex; align-items: center; gap: 8px; }
 #pagination span { font-size: 13px; }
-#pagination input { width: 50px; padding: 4px 8px; background: #16213e; border: 1px solid #333; color: #eee; border-radius: 4px; text-align: center; }
+#pagination input { width: 50px; padding: 4px 8px; background: #252528; border: 1px solid #333; color: #eee; border-radius: 4px; text-align: center; }
 
 #main-container { flex: 1; display: flex; overflow: hidden; }
 
@@ -45,7 +45,7 @@ body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; hei
 .grid-item.unsaved-detected { border-color: #ffcc00; background: linear-gradient(135deg, rgba(255,200,0,0.15) 0%, transparent 50%); }
 .grid-item.marked { border-color: #c0392b; box-shadow: 0 0 8px rgba(192,57,43,0.5); }
 
-#mark-actions { position: fixed; bottom: 50px; left: 50%; transform: translateX(-50%); background: #16213e; border: 2px solid #c0392b; border-radius: 8px; padding: 10px 20px; align-items: center; gap: 12px; z-index: 999; box-shadow: 0 4px 20px rgba(0,0,0,0.7); }
+#mark-actions { position: fixed; bottom: 50px; left: 50%; transform: translateX(-50%); background: #252528; border: 2px solid #c0392b; border-radius: 8px; padding: 10px 20px; align-items: center; gap: 12px; z-index: 999; box-shadow: 0 4px 20px rgba(0,0,0,0.7); }
 #mark-count { font-size: 13px; color: #eee; font-weight: bold; }
 .grid-item-image { position: relative; flex-shrink: 0; }
 .grid-item.editing::after { border-color: #00ff88; border-width: 3px; }
@@ -61,15 +61,16 @@ body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; hei
 .grid-item-name .cpills { position: absolute; right: 0; top: 50%; transform: translateY(-50%); display: flex; gap: 3px; }
 .grid-item-name .cpill { font-size: 9px; font-weight: bold; padding: 0 6px; border-radius: 8px; line-height: 13px; white-space: nowrap; }
 #constraints { display: flex; flex-direction: column; gap: 6px; }
-.crule { background: #0f3460; border: 1px solid #333; border-left: 4px solid var(--c, #ff5252); border-radius: 4px; padding: 4px 5px; display: flex; flex-direction: column; gap: 3px; font-size: 11px; }
+.crule { background: #34343a; border: 1px solid #333; border-left: 4px solid var(--c, #ff5252); border-radius: 4px; padding: 4px 5px; display: flex; flex-direction: column; gap: 3px; font-size: 11px; }
 .crule.off { opacity: 0.45; }
 .crule:hover { border-color: var(--c, #ff5252); }
 .grid-item-name .cpill { cursor: default; }
 .crule .crow { display: flex; gap: 3px; align-items: center; }
-.crule input[type=text], .crule select { background: #16213e; border: 1px solid #333; color: #eee; border-radius: 3px; padding: 2px 4px; font-size: 11px; min-width: 0; flex: 1; }
+.crule input[type=text], .crule select { background: #252528; border: 1px solid #333; color: #eee; border-radius: 3px; padding: 2px 4px; font-size: 11px; min-width: 0; flex: 1; }
 .crule input[type=color] { width: 20px; height: 18px; padding: 0; border: none; background: none; flex: none; }
 .crule .cnum { flex: 0 0 34px !important; }
-.crule .chit { color: #aaa; font-family: monospace; font-size: 10px; flex: none; }
+.crule .chit { color: #aaa; font-family: monospace; font-size: 10px; flex: none; cursor: pointer; }
+.crule .chit:hover { color: #fff; text-decoration: underline; }
 .crule .cdel { background: none; border: none; color: #888; cursor: pointer; font-size: 11px; flex: none; }
 .crule .cdel:hover { color: #e94560; }
 /* dataset loader and view settings live in popups opened from the progress row */
@@ -81,12 +82,12 @@ body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; hei
 #sidebar { padding-top: 40px !important; }
 body.no-sidebar #sidebar { display: none; }
 #side-pages { display: flex; flex-direction: column; gap: 6px; font-size: 11px; }
-#side-pages .progress-bar { flex: none; width: 100%; max-width: none; background: #0f3460; }
+#side-pages .progress-bar { flex: none; width: 100%; max-width: none; background: #34343a; }
 #side-pages #pagination { display: flex; gap: 3px; align-items: center; justify-content: space-between; }
 #side-pages #pagination .btn { padding: 3px 7px; }
 #side-pages #page-input { width: 40px; padding: 3px 4px; }
 #side-pages #pagination span { font-size: 11px; }
-#help-pop { display: none; position: fixed; top: 48px; right: 12px; z-index: 3000; background: #1a1a2e; border: 1px solid #e94560; border-radius: 6px; padding: 10px 14px; font-size: 12px; color: #ccc; line-height: 1.6; max-width: 420px; }
+#help-pop { display: none; position: fixed; top: 48px; right: 12px; z-index: 3000; background: #1c1c1e; border: 1px solid #e94560; border-radius: 6px; padding: 10px 14px; font-size: 12px; color: #ccc; line-height: 1.6; max-width: 420px; }
 #help-pop.visible { display: block; }
 #help-pop b { color: #e94560; }
 .grid-item-buttons { display: flex; visibility: hidden; gap: 4px; }  /* space kept: hovering must not resize the card */
@@ -99,14 +100,14 @@ body.no-sidebar #sidebar { display: none; }
 .grid-item-counts { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; }
 .grid-item-counts .tag { padding: 1px 4px; border-radius: 2px; font-size: 9px; font-weight: bold; }
 
-#sidebar { width: 220px; background: #16213e; padding: 12px; overflow-y: auto; border-left: 1px solid #333; display: flex; flex-direction: column; gap: 10px; }
+#sidebar { width: 220px; background: #252528; padding: 12px; overflow-y: auto; border-left: 1px solid #333; display: flex; flex-direction: column; gap: 10px; }
 #sidebar h3 { font-size: 12px; color: #e94560; margin-bottom: 5px; }
 
-.class-btn { display: flex; align-items: center; gap: 6px; padding: 5px 8px; background: #0f3460; border: 1px solid #333; border-radius: 4px; cursor: pointer; font-size: 11px; transition: all 0.15s; }
+.class-btn { display: flex; align-items: center; gap: 6px; padding: 5px 8px; background: #34343a; border: 1px solid #333; border-radius: 4px; cursor: pointer; font-size: 11px; transition: all 0.15s; }
 .class-btn:hover { border-color: #e94560; }
 .class-btn .cls-style { opacity: 0.45; font-size: 11px; padding: 0 2px; cursor: pointer; }
 .class-btn .cls-style:hover, .class-btn .cls-style.custom { opacity: 1; }
-#class-style-pop { display: none; position: fixed; z-index: 3000; background: #1a1a2e; border: 1px solid #e94560; border-radius: 6px; padding: 8px 10px; font-size: 11px; color: #ddd; width: 190px; }
+#class-style-pop { display: none; position: fixed; z-index: 3000; background: #1c1c1e; border: 1px solid #e94560; border-radius: 6px; padding: 8px 10px; font-size: 11px; color: #ddd; width: 190px; }
 #class-style-pop.visible { display: block; }
 #class-style-pop .row { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
 #class-style-pop .row label { width: 62px; }
@@ -126,16 +127,16 @@ body.no-sidebar #sidebar { display: none; }
 .class-header .hdr-check { width: 14px; text-align: center; flex-shrink: 0; }
 
 #grid-wrapper { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-#label-counts-footer { background: #16213e; padding: 8px 15px; border-top: 1px solid #333; display: none; flex-wrap: wrap; gap: 8px; align-items: center; flex-shrink: 0; }
+#label-counts-footer { background: #252528; padding: 8px 15px; border-top: 1px solid #333; display: none; flex-wrap: wrap; gap: 8px; align-items: center; flex-shrink: 0; }
 #label-counts-footer.visible { display: flex; }
 .label-count-tag { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; }
 .label-count-tag .count { background: rgba(0,0,0,0.3); padding: 1px 6px; border-radius: 3px; margin-left: 4px; }
 
 .help-text { font-size: 10px; color: #666; line-height: 1.5; margin-top: auto; }
 
-#status-bar { background: #0f3460; padding: 8px 15px; font-size: 12px; color: #888; border-top: 1px solid #333; transition: background 0.3s; }
+#status-bar { background: #34343a; padding: 8px 15px; font-size: 12px; color: #888; border-top: 1px solid #333; transition: background 0.3s; }
 #status-bar.pending { background: #3d3d00; color: #ffcc00; }
-#status-bar.saving { background: #0f3460; color: #66ccff; }
+#status-bar.saving { background: #34343a; color: #66ccff; }
 #status-bar.saved { background: #1a3d1a; color: #66ff66; }
 
 #modal-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.85); z-index: 1000; }
@@ -143,13 +144,13 @@ body.no-sidebar #sidebar { display: none; }
 
 .popup-overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.8); z-index: 900; justify-content: center; align-items: center; }
 .popup-overlay.visible { display: flex; }
-.popup-content { background: #1a1a2e; border-radius: 8px; padding: 15px; border: 1px solid #333; }
+.popup-content { background: #1c1c1e; border-radius: 8px; padding: 15px; border: 1px solid #333; }
 .popup-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-weight: bold; }
 .popup-close { background: none; border: none; color: #fff; font-size: 20px; cursor: pointer; padding: 0 5px; }
 .popup-close:hover { color: #e94560; }
 
-#modal { background: #1a1a2e; border-radius: 8px; max-width: 95vw; max-height: 95vh; display: flex; flex-direction: column; border: 1px solid #333; }
-#modal-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 15px; background: #16213e; border-bottom: 1px solid #333; border-radius: 8px 8px 0 0; }
+#modal { background: #1c1c1e; border-radius: 8px; max-width: 95vw; max-height: 95vh; display: flex; flex-direction: column; border: 1px solid #333; }
+#modal-header { display: flex; justify-content: space-between; align-items: center; padding: 10px 15px; background: #252528; border-bottom: 1px solid #333; border-radius: 8px 8px 0 0; }
 #modal-title { font-size: 14px; font-weight: bold; }
 #modal-close { background: none; border: none; color: #888; font-size: 24px; cursor: pointer; padding: 0 5px; }
 #modal-close:hover { color: #e94560; }
@@ -158,20 +159,20 @@ body.no-sidebar #sidebar { display: none; }
 #modal-canvas-container { flex: 1; overflow: auto; display: flex; justify-content: center; align-items: center; background: #0a0a0a; padding: 10px; }
 #modal-canvas { cursor: crosshair; max-width: 100%; }
 
-#modal-sidebar { width: 240px; background: #16213e; padding: 12px; overflow-y: auto; border-left: 1px solid #333; display: flex; flex-direction: column; gap: 8px; }
+#modal-sidebar { width: 240px; background: #252528; padding: 12px; overflow-y: auto; border-left: 1px solid #333; display: flex; flex-direction: column; gap: 8px; }
 #modal-regions-list { flex: 1; overflow-y: auto; min-height: 100px; max-height: 200px; }
-.region-item { display: flex; align-items: center; gap: 6px; padding: 5px 8px; background: #0f3460; border: 1px solid transparent; border-radius: 4px; margin-bottom: 3px; cursor: pointer; font-size: 11px; }
+.region-item { display: flex; align-items: center; gap: 6px; padding: 5px 8px; background: #34343a; border: 1px solid transparent; border-radius: 4px; margin-bottom: 3px; cursor: pointer; font-size: 11px; }
 .region-item:hover { border-color: #555; }
-.region-item.selected { border-color: #e94560; background: #1a1a3e; }
+.region-item.selected { border-color: #e94560; background: #232326; }
 .region-item.unknown { background: #3d1515; border-color: #ff4444; }
 .region-item .color { width: 8px; height: 8px; border-radius: 2px; }
 
-#modal-info { background: #0f3460; padding: 8px; border-radius: 4px; font-size: 10px; font-family: monospace; }
+#modal-info { background: #34343a; padding: 8px; border-radius: 4px; font-size: 10px; font-family: monospace; }
 #modal-mode { padding: 4px 10px; border-radius: 4px; font-weight: bold; font-size: 11px; text-align: center; }
 #modal-mode.draw { background: #e94560; }
-#modal-mode.select { background: #0f3460; border: 1px solid #e94560; }
+#modal-mode.select { background: #34343a; border: 1px solid #e94560; }
 
-#modal-footer { display: flex; justify-content: space-between; align-items: center; padding: 10px 15px; background: #16213e; border-top: 1px solid #333; border-radius: 0 0 8px 8px; gap: 10px; }
+#modal-footer { display: flex; justify-content: space-between; align-items: center; padding: 10px 15px; background: #252528; border-top: 1px solid #333; border-radius: 0 0 8px 8px; gap: 10px; }
 
 #cursor-label { position: fixed; pointer-events: none; padding: 2px 6px; border-radius: 3px; font-size: 11px; font-weight: bold; z-index: 9999; display: none; white-space: nowrap; }
 
@@ -179,18 +180,18 @@ body.no-sidebar #sidebar { display: none; }
 #zoom-window canvas { width: 100%; height: 100%; image-rendering: pixelated; cursor: none; }
 #zoom-window::after { content: '+'; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: rgba(255,255,255,0.7); font-size: 24px; font-weight: bold; pointer-events: none; text-shadow: 0 0 2px #000, 0 0 4px #000; }
 
-#hotkey-modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #1a1a2e; border: 1px solid #e94560; border-radius: 8px; padding: 20px; z-index: 2000; min-width: 300px; }
+#hotkey-modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #1c1c1e; border: 1px solid #e94560; border-radius: 8px; padding: 20px; z-index: 2000; min-width: 300px; }
 #hotkey-modal.visible { display: block; }
 #hotkey-modal h3 { margin-bottom: 15px; color: #e94560; }
-#hotkey-modal input { padding: 10px; font-size: 16px; text-align: center; background: #0f3460; border: 1px solid #333; color: #eee; border-radius: 4px; width: 100%; }
+#hotkey-modal input { padding: 10px; font-size: 16px; text-align: center; background: #34343a; border: 1px solid #333; color: #eee; border-radius: 4px; width: 100%; }
 
-#create-yaml-modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #1a1a2e; border: 1px solid #e94560; border-radius: 8px; padding: 20px; z-index: 2000; min-width: 400px; }
+#create-yaml-modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #1c1c1e; border: 1px solid #e94560; border-radius: 8px; padding: 20px; z-index: 2000; min-width: 400px; }
 #create-yaml-modal.visible { display: block; }
 #create-yaml-modal h3 { margin-bottom: 10px; color: #e94560; }
-#create-yaml-modal textarea { padding: 10px; font-size: 13px; background: #0f3460; border: 1px solid #333; color: #eee; border-radius: 4px; width: 100%; resize: vertical; font-family: monospace; }
+#create-yaml-modal textarea { padding: 10px; font-size: 13px; background: #34343a; border: 1px solid #333; color: #eee; border-radius: 4px; width: 100%; resize: vertical; font-family: monospace; }
 #hotkey-modal .btns { display: flex; gap: 10px; margin-top: 15px; justify-content: flex-end; }
 
-#split-modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #1a1a2e; border: 1px solid #e94560; border-radius: 8px; padding: 20px; z-index: 2000; min-width: 350px; }
+#split-modal { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #1c1c1e; border: 1px solid #e94560; border-radius: 8px; padding: 20px; z-index: 2000; min-width: 350px; }
 #split-modal.visible { display: block; }
 #split-modal h3 { margin-bottom: 10px; color: #e94560; }
 #split-modal .btns { display: flex; gap: 10px; margin-top: 15px; justify-content: flex-end; }
@@ -229,6 +230,7 @@ body.no-sidebar #sidebar { display: none; }
   PgUp/PgDn → Navigate pages<br>
   M → Toggle mark mode<br>
   Esc → Exit mark mode / close popup<br>
+  ` / ~ → Show / hide all constraint violations<br>
   <br><b>Constraints</b> (sidebar, under classes): a broken rule shows as a pill next to the card's file name.
   Classes: comma-separated, empty or * = any.<br>
   count: number of A boxes within min..max<br>
@@ -236,6 +238,7 @@ body.no-sidebar #sidebar { display: none; }
   contains: every A contains min..max B (by B's centre)<br>
   overlap: no A and B overlap more than % of the smaller box<br>
   size: no A differs in area from the median A by more than %<br>
+  implies: if any A is present, the number of B is within min..max (empty min = 1; max 0 = A excludes B)<br>
   ×N on a pill = number of offending boxes; the number on a rule = cards breaking it among loaded ones.
 </div>
 
@@ -345,6 +348,7 @@ body.no-sidebar #sidebar { display: none; }
     <div id="class-buttons"></div>
     <button id="add-class-btn" class="btn btn-sm" onclick="showAddClassPrompt()" style="width:100%;margin:8px 0;">+ Add Class</button>
     <h3 style="margin-top:6px">Constraints</h3>
+    <label style="font-size:11px;" title="Filter: frames breaking any enabled constraint (the counter on a rule filters by that rule)"><input type="checkbox" id="only-broken" onchange="filterBroken(this.checked ? '' : null)"> only frames breaking a rule</label>
     <datalist id="constraint-classes"></datalist>
     <div id="constraints"></div>
     <button class="btn btn-sm btn-secondary" onclick="addConstraint()" style="width:100%;">+ Rule</button>
@@ -442,7 +446,7 @@ body.no-sidebar #sidebar { display: none; }
   <p style="margin-bottom:15px;color:#aaa;font-size:12px;">Redistribute images between train and validation sets.</p>
   <div style="margin-bottom:12px;">
     <label style="display:block;margin-bottom:4px;font-size:12px;">Validation %:</label>
-    <input type="number" id="split-val-percent" value="20" min="1" max="50" style="width:80px;padding:6px;background:#0f3460;border:1px solid #333;color:#eee;border-radius:4px;">
+    <input type="number" id="split-val-percent" value="20" min="1" max="50" style="width:80px;padding:6px;background:#34343a;border:1px solid #333;color:#eee;border-radius:4px;">
     <span style="margin-left:8px;color:#888;font-size:12px;">(train will get the rest)</span>
   </div>
   <div style="margin-bottom:12px;">
@@ -457,7 +461,7 @@ body.no-sidebar #sidebar { display: none; }
       Shuffle before splitting
     </label>
   </div>
-  <div id="split-preview" style="background:#0f3460;padding:8px;border-radius:4px;font-size:11px;margin-bottom:15px;display:none;"></div>
+  <div id="split-preview" style="background:#34343a;padding:8px;border-radius:4px;font-size:11px;margin-bottom:15px;display:none;"></div>
   <div class="btns">
     <button class="btn btn-secondary" onclick="closeSplitModal()">Cancel</button>
     <button class="btn" onclick="executeSplit()">Split Dataset</button>
@@ -1309,7 +1313,7 @@ async function createYaml() {
 // rule: {name, color, on, type: count|inside|contains|overlap|size, a, b (class lists), min, max, t (%)}
 let constraints = [];
 const CONSTRAINT_FIELDS = { count: ['a', 'min', 'max'], inside: ['a', 'b', 't'], contains: ['a', 'b', 'min', 'max'],
-                            overlap: ['a', 'b', 't'], size: ['a', 't'] };
+                            overlap: ['a', 'b', 't'], size: ['a', 't'], implies: ['a', 'b', 'min', 'max'] };
 const CONSTRAINT_PALETTE = ['#ff5252', '#ffab40', '#ffd740', '#69f0ae', '#40c4ff', '#b388ff', '#ff80ab', '#a7ffeb'];
 
 function classMatcher(list) {
@@ -1333,6 +1337,10 @@ function constraintOffenders(rule, regions) {
     const broken = A.length < lo || A.length > hi;
     return { broken, boxes: broken ? A : [] };
   }
+  if (rule.type === 'implies') {  // if any A is present, the number of B must be within min..max (min defaults to 1)
+    const broken = A.length > 0 && (B.length < num(rule.min, 1) || B.length > hi);
+    return { broken, boxes: broken ? A.concat(B) : [] };
+  }
   if (rule.type === 'inside')
     bad = A.filter(ra => { const a = xyxy(ra);
       return !B.some(rb => rb !== ra && (t > 0 ? interOf(a, xyxy(rb)) >= t * areaOf(a) : centreIn(a, xyxy(rb)))); });
@@ -1355,7 +1363,7 @@ function constraintOffenders(rule, regions) {
 // number of offending boxes (count rule: 1 when broken)
 function checkConstraint(rule, regions) {
   const o = constraintOffenders(rule, regions);
-  return !o.broken ? 0 : rule.type === 'count' ? 1 : o.boxes.length;
+  return !o.broken ? 0 : rule.type === 'count' || rule.type === 'implies' ? 1 : o.boxes.length;
 }
 
 function brokenConstraints(regions) {
@@ -1369,11 +1377,25 @@ function setConstraintFocus(rule, regions = null) {
   redrawAllGridCanvases();
   if (modalOpen) renderModal();
 }
+// ` / ~ toggles: offenders of every enabled rule, each in its colour (a hovered rule still shows alone)
+let showAllConstraints = false;
+function toggleAllConstraints() {
+  showAllConstraints = !showAllConstraints;
+  setStatus(showAllConstraints ? 'Constraint violations: shown (` / ~ to hide)' : 'Constraint violations: hidden');
+  redrawAllGridCanvases();
+  if (modalOpen) renderModal();
+}
 function drawConstraintFocus(ctx, regions, ox, oy, iw, ih, lineScale) {
-  if (!constraintFocus || (constraintFocusRegions && constraintFocusRegions !== regions)) return;
-  const color = constraintFocus.color || '#ff5252';
+  if (constraintFocus) {
+    if (!constraintFocusRegions || constraintFocusRegions === regions) drawRuleOffenders(ctx, constraintFocus, regions, ox, oy, iw, ih, lineScale);
+  } else if (showAllConstraints) {
+    for (const c of constraints) if (c.on !== false && c.name) drawRuleOffenders(ctx, c, regions, ox, oy, iw, ih, lineScale);
+  }
+}
+function drawRuleOffenders(ctx, rule, regions, ox, oy, iw, ih, lineScale) {
+  const color = rule.color || '#ff5252';
   ctx.save();
-  for (const r of constraintOffenders(constraintFocus, regions).boxes) {
+  for (const r of constraintOffenders(rule, regions).boxes) {
     const [x1, y1, x2, y2] = xyxy(r), pad = 3 * lineScale;
     const x = ox + x1 * iw - pad, y = oy + y1 * ih - pad, w = (x2 - x1) * iw + 2 * pad, h = (y2 - y1) * ih + 2 * pad;
     ctx.globalAlpha = 0.25; ctx.fillStyle = color; ctx.fillRect(x, y, w, h);
@@ -1454,7 +1476,8 @@ function renderConstraints() {
     Object.keys(CONSTRAINT_FIELDS).forEach(k => type.add(new Option(k, k, false, k === c.type)));
     type.onchange = () => { c.type = type.value; constraintsChanged(true); };
     const hit = document.createElement('span');
-    hit.className = 'chit'; hit.dataset.rule = i; hit.title = 'cards breaking the rule / loaded cards';
+    hit.className = 'chit'; hit.dataset.rule = i; hit.title = 'cards breaking the rule / loaded cards. Click: show only frames breaking this rule';
+    hit.onclick = () => filterBroken(String(i));
     row(on, field('color', 'colour', '', 'color'), field('name', 'name'), del);
     const f = CONSTRAINT_FIELDS[c.type] || [];
     row(type, hit);
@@ -4216,7 +4239,7 @@ function goToPage() {
 // ---- class-rule filters: evaluated on label files fetched from /label_boxes (fresh on every Apply)
 let filterRules = []; // [{type, a, b, min}]
 const RULE_TYPES = [["has", "has class A"], ["lacks", "lacks class A"], ["overlap", "A overlaps B"],
-                    ["nolabels", "no boxes at all"], ["nofile", "no label file"]];
+                    ["nolabels", "no boxes at all"], ["nofile", "no label file"], ["broken", "breaks constraint"]];
 
 function classOptions(sel) {
   return Object.entries(classNames).map(([i, n]) => `<option value="${i}" ${String(sel) === i ? 'selected' : ''}>${n}</option>`).join('');
@@ -4232,6 +4255,8 @@ function renderRules() {
     row.innerHTML =
       `<select data-k="${k}" data-f="type">${RULE_TYPES.map(([v, t]) => `<option value="${v}" ${r.type === v ? 'selected' : ''}>${t}</option>`).join('')}</select>` +
       (needA ? `<select data-k="${k}" data-f="a" title="A">${classOptions(r.a)}</select>` : '') +
+      (r.type === 'broken' ? `<select data-k="${k}" data-f="c"><option value="">any constraint</option>${
+        constraints.map((c, i) => `<option value="${i}" ${String(r.c) === String(i) ? 'selected' : ''}>${c.name}</option>`).join('')}</select>` : '') +
       (r.type === 'overlap' ? `<select data-k="${k}" data-f="b" title="B">${classOptions(r.b)}</select>` +
         `<input data-k="${k}" data-f="min" type="number" step="0.05" min="0" max="1" value="${r.min}" title="min overlap: intersection / smaller box" style="width:52px;">` : '') +
       `<button class="btn btn-sm btn-secondary" onclick="filterRules.splice(${k},1);renderRules();">×</button>`;
@@ -4261,6 +4286,11 @@ function passesRules(boxes) { // boxes: array or null (no label file)
   return filterRules.every(r => {
     if (r.type === 'nofile') return boxes === null;
     const bx = boxes || [];
+    if (r.type === 'broken') {
+      const regions = bx.map(b => ({ class: classNames[b[0]], box: b.slice(1) }));
+      const list = r.c === '' || r.c == null ? constraints.filter(c => c.on !== false && c.name) : [constraints[+r.c]].filter(Boolean);
+      return list.some(c => checkConstraint(c, regions) > 0);
+    }
     if (r.type === 'nolabels') return bx.length === 0;
     const A = bx.filter(b => String(b[0]) === String(r.a));
     if (r.type === 'has') return A.length > 0;
@@ -4346,7 +4376,17 @@ async function applyFilter() {
   }
 }
 
+// sidebar shortcut: keep only frames breaking any enabled constraint (c = '') or constraint #c; null = off
+async function filterBroken(c) {
+  filterRules = filterRules.filter(r => r.type !== 'broken');
+  if (c !== null) filterRules.push({ type: 'broken', c });
+  document.getElementById('only-broken').checked = c !== null;
+  await applyFilter();
+  setStatus(c === null ? 'Constraint filter off' : `${images.length} of ${allImages.length} frames break ${c === '' ? 'a constraint' : constraints[+c]?.name}`);
+}
+
 function clearFilter() {
+  document.getElementById('only-broken').checked = false;
   document.getElementById('filter-names').value = '';
   document.getElementById('filter-status').textContent = '';
   activeFilter = [];
@@ -4419,6 +4459,11 @@ function changeSelectedClass(newClass) {
 // Keyboard
 document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
+  if (e.code === 'Backquote' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+    e.preventDefault();
+    toggleAllConstraints();
+    return;
+  }
   if (e.key === 'Escape' && POPS.some(p => document.getElementById(p).classList.contains('visible'))) {
     closePops();
     return;
