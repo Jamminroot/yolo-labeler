@@ -230,7 +230,7 @@ body.no-sidebar #sidebar { display: none; }
   PgUp/PgDn → Navigate pages<br>
   M → Toggle mark mode<br>
   Esc → Exit mark mode / close popup<br>
-  hold ` / ~ → Show constraint violations on the card under the cursor<br>
+  ` / ~ → Toggle constraint violations on the card under the cursor<br>
   <br><b>Constraints</b> (sidebar, under classes): a broken rule shows as a pill next to the card's file name.
   Classes: comma-separated, empty or * = any.<br>
   count: number of A boxes within min..max<br>
@@ -348,6 +348,7 @@ body.no-sidebar #sidebar { display: none; }
     <div id="class-buttons"></div>
     <button id="add-class-btn" class="btn btn-sm" onclick="showAddClassPrompt()" style="width:100%;margin:8px 0;">+ Add Class</button>
     <h3 style="margin-top:6px">Constraints</h3>
+    <label style="font-size:11px;" title="Outline the boxes breaking any enabled rule on the card under the cursor (hotkey ` / ~)"><input type="checkbox" id="show-violations" onchange="setAllConstraints(this.checked); this.blur()"> highlight violations <span style="color:#777">(`)</span></label>
     <label style="font-size:11px;" title="Filter: frames breaking any enabled constraint (the counter on a rule filters by that rule)"><input type="checkbox" id="only-broken" onchange="filterBroken(this.checked ? '' : null)"> only frames breaking a rule</label>
     <datalist id="constraint-classes"></datalist>
     <div id="constraints"></div>
@@ -1377,19 +1378,19 @@ function setConstraintFocus(rule, regions = null) {
   redrawAllGridCanvases();
   if (modalOpen) renderModal();
 }
-// holding ` / ~: offenders of every enabled rule, each in its colour, on the card under the cursor
+// ` / ~ toggles: offenders of every enabled rule, each in its colour, on the card under the cursor
 // (the open image in the modal; every card when the cursor is on none). A hovered rule still shows alone.
 let showAllConstraints = false, hoveredCard = -1;
 function setAllConstraints(on) {
   if (showAllConstraints === on) return;
   showAllConstraints = on;
+  document.getElementById('show-violations').checked = on;
   if (hoveredCard >= 0 && !modalOpen) redrawGridCanvas(hoveredCard); else redrawAllGridCanvases();
   if (modalOpen) renderModal();
 }
 function cardRegions(i) {
   return editInGrid && gridEditIndex === i ? gridEditRegions : imageCache[images[i]]?.regions;
 }
-window.addEventListener('blur', () => setAllConstraints(false));
 function drawConstraintFocus(ctx, regions, ox, oy, iw, ih, lineScale) {
   if (constraintFocus) {
     if (!constraintFocusRegions || constraintFocusRegions === regions) drawRuleOffenders(ctx, constraintFocus, regions, ox, oy, iw, ih, lineScale);
@@ -4464,12 +4465,11 @@ function changeSelectedClass(newClass) {
 }
 
 // Keyboard
-document.addEventListener('keyup', e => { if (e.code === 'Backquote') setAllConstraints(false); });
 document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
   if (e.code === 'Backquote' && !e.ctrlKey && !e.altKey && !e.metaKey) {
     e.preventDefault();
-    setAllConstraints(true);
+    if (!e.repeat) setAllConstraints(!showAllConstraints);
     return;
   }
   if (e.key === 'Escape' && POPS.some(p => document.getElementById(p).classList.contains('visible'))) {
