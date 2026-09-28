@@ -230,7 +230,7 @@ body.no-sidebar #sidebar { display: none; }
   PgUp/PgDn → Navigate pages<br>
   M → Toggle mark mode<br>
   Esc → Exit mark mode / close popup<br>
-  ` / ~ → Show / hide all constraint violations<br>
+  hold ` / ~ → Show constraint violations on the card under the cursor<br>
   <br><b>Constraints</b> (sidebar, under classes): a broken rule shows as a pill next to the card's file name.
   Classes: comma-separated, empty or * = any.<br>
   count: number of A boxes within min..max<br>
@@ -1377,18 +1377,23 @@ function setConstraintFocus(rule, regions = null) {
   redrawAllGridCanvases();
   if (modalOpen) renderModal();
 }
-// ` / ~ toggles: offenders of every enabled rule, each in its colour (a hovered rule still shows alone)
-let showAllConstraints = false;
-function toggleAllConstraints() {
-  showAllConstraints = !showAllConstraints;
-  setStatus(showAllConstraints ? 'Constraint violations: shown (` / ~ to hide)' : 'Constraint violations: hidden');
-  redrawAllGridCanvases();
+// holding ` / ~: offenders of every enabled rule, each in its colour, on the card under the cursor
+// (the open image in the modal; every card when the cursor is on none). A hovered rule still shows alone.
+let showAllConstraints = false, hoveredCard = -1;
+function setAllConstraints(on) {
+  if (showAllConstraints === on) return;
+  showAllConstraints = on;
+  if (hoveredCard >= 0 && !modalOpen) redrawGridCanvas(hoveredCard); else redrawAllGridCanvases();
   if (modalOpen) renderModal();
 }
+function cardRegions(i) {
+  return editInGrid && gridEditIndex === i ? gridEditRegions : imageCache[images[i]]?.regions;
+}
+window.addEventListener('blur', () => setAllConstraints(false));
 function drawConstraintFocus(ctx, regions, ox, oy, iw, ih, lineScale) {
   if (constraintFocus) {
     if (!constraintFocusRegions || constraintFocusRegions === regions) drawRuleOffenders(ctx, constraintFocus, regions, ox, oy, iw, ih, lineScale);
-  } else if (showAllConstraints) {
+  } else if (showAllConstraints && (modalOpen ? regions === modalRegions : hoveredCard < 0 || regions === cardRegions(hoveredCard))) {
     for (const c of constraints) if (c.on !== false && c.name) drawRuleOffenders(ctx, c, regions, ox, oy, iw, ih, lineScale);
   }
 }
@@ -1946,6 +1951,8 @@ function createGridItem(index, w, h, fullWidthMode = false) {
   const item = document.createElement('div');
   item.className = 'grid-item' + (isSelected ? ' selected' : '') + (isEditing ? ' editing' : '') + (isMarked ? ' marked' : '');
   item.dataset.index = index;
+  item.addEventListener('mouseenter', () => { hoveredCard = index; if (showAllConstraints) redrawAllGridCanvases(); });
+  item.addEventListener('mouseleave', () => { if (hoveredCard === index) hoveredCard = -1; if (showAllConstraints) redrawAllGridCanvases(); });
   if (fullWidthMode) item.dataset.fullWidth = 'true';
   item.onclick = (e) => {
     if (markMode) { toggleMark(index); return; }
@@ -4457,11 +4464,12 @@ function changeSelectedClass(newClass) {
 }
 
 // Keyboard
+document.addEventListener('keyup', e => { if (e.code === 'Backquote') setAllConstraints(false); });
 document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
   if (e.code === 'Backquote' && !e.ctrlKey && !e.altKey && !e.metaKey) {
     e.preventDefault();
-    toggleAllConstraints();
+    setAllConstraints(true);
     return;
   }
   if (e.key === 'Escape' && POPS.some(p => document.getElementById(p).classList.contains('visible'))) {
