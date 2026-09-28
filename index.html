@@ -58,8 +58,8 @@ body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; hei
 .grid-item-footer { background: #111; padding: 4px 6px; }
 .grid-item-footer-top { display: flex; align-items: center; gap: 6px; }
 .grid-item-name { font-size: 10px; color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
-.grid-item-buttons { display: none; gap: 4px; }
-.grid-item:hover .grid-item-buttons { display: flex; }
+.grid-item-buttons { display: flex; visibility: hidden; gap: 4px; }  /* space kept: hovering must not resize the card */
+.grid-item:hover .grid-item-buttons { visibility: visible; }
 .grid-item-btn { padding: 2px 8px; border-radius: 3px; border: none; cursor: pointer; font-size: 10px; font-weight: bold; }
 .grid-item-btn.detect { background: #e94560; color: white; }
 .grid-item-btn.detect:hover { background: #ff5a7a; }
@@ -205,8 +205,10 @@ body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; hei
   <div class="setting-group">
     <label><input type="checkbox" id="enable-zoom" checked onchange="saveSettings()"> Zoom cursor</label>
     <label title="Hold the right mouse button over an image to magnify, in any mode"><input type="checkbox" id="zoom-rmb" onchange="saveSettings()"> Show Zoom on RMB</label>
+    <label title="With the mouse on a card, the selected box (or the hovered one) stays solid and the other boxes of that card fade"><input type="checkbox" id="dim-others" onchange="saveSettings(); redrawAllGridCanvases(); if (modalOpen) renderModal();"> Dim unselected</label>
     <label title="Box labels appear only for the box under the cursor (and the selected one)"><input type="checkbox" id="labels-on-hover" onchange="saveSettings(); redrawAllGridCanvases(); if (modalOpen) renderModal();"> Show label only on hover</label>
-    <input type="range" id="zoom-size" min="150" max="350" value="220" style="width:80px;vertical-align:middle;margin-left:8px;" onchange="updateZoomSize(); saveSettings()" oninput="updateZoomSize()">
+    <input type="range" id="zoom-factor" min="1.5" max="8" step="0.5" value="3" title="Zoom strength" style="width:60px;vertical-align:middle;margin-left:6px;" oninput="updateZoomFactor()" onchange="saveSettings()"><span id="zoom-factor-v" style="font-size:11px;margin-left:2px;">×3</span>
+    <input type="range" id="zoom-size" min="150" max="700" value="220" style="width:80px;vertical-align:middle;margin-left:8px;" onchange="updateZoomSize(); saveSettings()" oninput="updateZoomSize()">
   </div>
   <div class="setting-group">
     <label>Opacity: <span id="opacity-value">75%</span></label>
@@ -255,6 +257,7 @@ body { font-family: system-ui, sans-serif; background: #1a1a2e; color: #eee; hei
       <option value="area" selected>area</option>
       <option value="box">box</option>
     </select></label>
+  <label style="font-size:11px;margin-left:6px;" title="Brightness of the overlap highlight">glow <input type="range" id="overlap-bright" min="0" max="100" value="100" style="width:70px;vertical-align:middle;" oninput="redrawOverlaps()" onchange="saveSettings()"></label>
   <button class="btn btn-sm btn-secondary" onclick="toggleFilterPopup()" id="filter-btn" style="margin-left:8px;">Filter</button>
   <button class="btn btn-sm btn-secondary" id="mark-mode-btn" onclick="toggleMarkMode()" style="margin-left:4px;">Mark</button>
 </div>
@@ -1380,6 +1383,7 @@ async function loadLabelCache() {
         document.getElementById('enable-zoom').checked = s.enableZoom;
       }
       if (s.zoomRmb !== undefined) document.getElementById('zoom-rmb').checked = s.zoomRmb;
+      if (s.zoomFactor !== undefined) { document.getElementById('zoom-factor').value = s.zoomFactor; updateZoomFactor(); }
       if (s.zoomSize !== undefined) {
         document.getElementById('zoom-size').value = s.zoomSize;
         updateZoomSize();
@@ -1402,7 +1406,9 @@ async function loadLabelCache() {
         countedClasses = new Set(s.countedClasses);
       }
       if (s.classStyle && typeof s.classStyle === 'object') classStyle = s.classStyle;
+      if (s.overlapBright !== undefined) document.getElementById('overlap-bright').value = s.overlapBright;
       if (s.labelsOnHover !== undefined) document.getElementById('labels-on-hover').checked = s.labelsOnHover;
+      if (s.dimOthers !== undefined) document.getElementById('dim-others').checked = s.dimOthers;
       if (s.hiddenTintClasses && Array.isArray(s.hiddenTintClasses)) {
         hiddenTintClasses = new Set(s.hiddenTintClasses);
       }
@@ -1456,6 +1462,7 @@ async function saveSettings() {
     enableZoom: document.getElementById('enable-zoom').checked,
     zoomRmb: document.getElementById('zoom-rmb').checked,
     zoomSize: document.getElementById('zoom-size').value,
+    zoomFactor: document.getElementById('zoom-factor').value,
     regionOpacity: document.getElementById('region-opacity').value,
     stripeStrength: document.getElementById('stripe-strength').value,
     stripeStyle: document.getElementById('stripe-style').value,
@@ -1465,7 +1472,9 @@ async function saveSettings() {
     countedClasses: Array.from(countedClasses),
     hiddenTintClasses: Array.from(hiddenTintClasses),
     classStyle: classStyle,
+    overlapBright: document.getElementById('overlap-bright').value,
     labelsOnHover: document.getElementById('labels-on-hover').checked,
+    dimOthers: document.getElementById('dim-others').checked,
     ignoreOverlapClasses: Array.from(ignoreOverlapClasses),
     gridCols: document.getElementById('grid-cols').value,
     fullWidthMode: document.getElementById('full-width-mode').checked,
@@ -1675,7 +1684,7 @@ function createGridItem(index, w, h, fullWidthMode = false) {
   canvas.addEventListener('mousedown', (e) => gridMouseDown(e, index));
   canvas.addEventListener('mousemove', (e) => { gridMouseMove(e, index); updateZoomWindow(e, index); updateGridCursor(e, index); });
   canvas.addEventListener('mouseup', (e) => gridMouseUp(e, index));
-  canvas.addEventListener('mouseleave', (e) => { hideZoomWindow(e.target); if (setHover(null, -1)) redrawGridCanvas(index); });
+  canvas.addEventListener('mouseleave', (e) => { if (!gridZoomActive()) hideZoomWindow(e.target); else e.target.style.cursor = ''; if (setHover(null, -1)) redrawGridCanvas(index); });
   canvas.addEventListener('mousemove', (e) => {
     const cached = imageCache[images[index]];
     const coords = getCanvasCoords(canvas, index);
@@ -1968,7 +1977,14 @@ function findOverlapRects(regions) {
 }
 
 // Area mode: the intersection flashes between the two classes' colours, heavy glowing outline, marching ants
+function overlapBright() {  // 0..1 from the "glow" slider next to the overlap selectors
+  const el = document.getElementById('overlap-bright');
+  return el ? parseInt(el.value) / 100 : 1;
+}
+
 function drawOverlapAreas(ctx, rects, ox, oy, iw, ih, lineScale) {
+  const glowK = overlapBright();
+  if (glowK <= 0) return;
   const t = 0.5 + 0.5 * Math.sin(animationPhase * 1.6); // smooth 0..1..0: colours blend, no jump
   const glow = 0.5 + 0.5 * Math.sin(animationPhase * 3.2);
   const hex = c => (c && c.startsWith('hsl')) ? hslToHex(c) : c;
@@ -1977,21 +1993,22 @@ function drawOverlapAreas(ctx, rects, ox, oy, iw, ih, lineScale) {
     const colA = hex(colors[ca]) || '#ff00ff', colB = hex(colors[cb]) || '#ffea00';
     const fill = lerpColor(colA, colB, t), other = lerpColor(colB, colA, t);
     ctx.save();
-    ctx.globalAlpha = 0.8;
+    ctx.globalAlpha = 0.8 * glowK;
     ctx.fillStyle = fill;
     ctx.fillRect(rx, ry, rw, rh);
-    ctx.globalAlpha = 1;
+    ctx.globalAlpha = glowK;
     // outer black halo so it reads on any background
     ctx.lineWidth = 7 / lineScale;
     ctx.strokeStyle = '#000';
     ctx.strokeRect(rx, ry, rw, rh);
     // glowing inner border in the other class' colour
-    ctx.shadowColor = other;
-    ctx.shadowBlur = 6 + 10 * glow;
-    ctx.lineWidth = 4 / lineScale;
+    ctx.globalAlpha = glowK * (0.25 + 0.35 * glow);  // cheap glow: wide translucent stroke (shadowBlur is costly)
+    ctx.lineWidth = (8 + 6 * glow) / lineScale;
     ctx.strokeStyle = other;
     ctx.strokeRect(rx, ry, rw, rh);
-    ctx.shadowBlur = 0;
+    ctx.globalAlpha = glowK;
+    ctx.lineWidth = 4 / lineScale;
+    ctx.strokeRect(rx, ry, rw, rh);
     // marching ants on top
     ctx.lineWidth = 2 / lineScale;
     ctx.setLineDash([6 / lineScale, 5 / lineScale]);
@@ -2251,10 +2268,15 @@ function drawRegionsBase(ctx, regions, ox, oy, iw, ih, showHandles, selectedIdx 
   
   // Breathing opacity for overlaps (subtle pulse between 0.3 and 0.55)
   const breathe = 0.5 + 0.5 * Math.sin(animationPhase);
-  const overlapPulse = 0.35 + 0.55 * breathe;
+  const overlapPulse = (0.35 + 0.55 * breathe) * overlapBright();
   
   const labelJobs = [];
+  // "Dim others": the mouse is on THIS card and a box is selected (else hovered) -> every other box fades
+  const focus = selectedIdx >= 0 ? selectedIdx : (hoverRegion.regions === regions ? hoverRegion.idx : -1);
+  const dimOthers = document.getElementById('dim-others')?.checked && hoverRegion.regions === regions && focus >= 0;
   regions.forEach((r, i) => {
+    const am = dimOthers && i !== focus ? 0.25 : 1;  // alpha multiplier of this box
+    ctx.globalAlpha = am;
     const unknown = isUnknownClass(r.class);
     const overlapBorder = overlaps.has(i);
     const hasOverlap = overlapBorder && overlapFill;
@@ -2270,10 +2292,10 @@ function drawRegionsBase(ctx, regions, ox, oy, iw, ih, showHandles, selectedIdx 
     // Fill (skip if tint hidden for this class)
     const showTint = !hiddenTintClasses.has(r.class);
     if (showTint) {
-      ctx.globalAlpha = cs.opacity !== undefined && cs.opacity !== null ? cs.opacity : regionOpacity;
+      ctx.globalAlpha = (cs.opacity !== undefined && cs.opacity !== null ? cs.opacity : regionOpacity) * am;
       ctx.fillStyle = color;
       ctx.fillRect(rx, ry, rw, rh);
-      ctx.globalAlpha = 1;
+      ctx.globalAlpha = am;
     }
     
     // Random stripes for all regions (angle based on box position for consistency)
@@ -2300,7 +2322,7 @@ function drawRegionsBase(ctx, regions, ox, oy, iw, ih, showHandles, selectedIdx 
       const cy = ry + rh/2;
       
       if (!unknown && !hasOverlap) { // plain boxes: line colour from the selector, visibility from the Lines slider
-        ctx.globalAlpha = stripeStrength;
+        ctx.globalAlpha = stripeStrength * am;
         ctx.strokeStyle = stripeStyle === 'color' ? (color.startsWith('hsl') ? hslToHex(color) : color)
                         : stripeStyle === 'black' ? '#000' : '#fff';
       }
@@ -2310,7 +2332,7 @@ function drawRegionsBase(ctx, regions, ox, oy, iw, ih, showHandles, selectedIdx 
         ctx.lineTo(cx + d * cos + diag * sin, cy + d * sin - diag * cos);
       }
       ctx.stroke();
-      ctx.globalAlpha = 1;
+      ctx.globalAlpha = am;
       ctx.restore();
       
       // Extra cross-hatch for unknown regions
@@ -2337,6 +2359,7 @@ function drawRegionsBase(ctx, regions, ox, oy, iw, ih, showHandles, selectedIdx 
     
     // Border
     if (overlapBorder && !hasOverlap && !unknown) { // frame mode: black halo + pulsing white border
+      ctx.globalAlpha = overlapBright() * am;
       ctx.strokeStyle = '#000';
       ctx.lineWidth = 7 / lineScale;
       ctx.strokeRect(rx, ry, rw, rh);
@@ -2347,12 +2370,15 @@ function drawRegionsBase(ctx, regions, ox, oy, iw, ih, showHandles, selectedIdx 
       ctx.lineWidth = (i === selectedIdx ? 2.5 : (unknown ? 2 : (hasOverlap ? 1.5 : 1))) / lineScale;
     }
     ctx.strokeRect(rx, ry, rw, rh);
+    ctx.globalAlpha = am;
     if (isHovered(regions, i)) {  // hover: a light halo so it is clear which label belongs to this box
       ctx.save();
       ctx.strokeStyle = '#ffffff';
+      ctx.globalAlpha = 0.35;
+      ctx.lineWidth = 6 / lineScale;
+      ctx.strokeRect(rx, ry, rw, rh);
+      ctx.globalAlpha = 1;
       ctx.lineWidth = 2 / lineScale;
-      ctx.shadowColor = '#ffffff';
-      ctx.shadowBlur = 6;
       ctx.strokeRect(rx, ry, rw, rh);
       ctx.restore();
     }
@@ -2379,7 +2405,7 @@ function drawRegionsBase(ctx, regions, ox, oy, iw, ih, showHandles, selectedIdx 
     const labelOn = cs.label !== false && !document.getElementById('labels-on-hover').checked;
     if (labelOn || i === selectedIdx || isHovered(regions, i))
       labelJobs.push({ i, label: unknown ? '???' : r.class, rx, ry, rw, rh, unknown, hasOverlap,
-                       selected: i === selectedIdx, hovered: isHovered(regions, i), color });
+                       selected: i === selectedIdx, hovered: isHovered(regions, i), color, am });
     
     // Handles for selected
     if (showHandles && i === selectedIdx) {
@@ -2394,6 +2420,7 @@ function drawRegionsBase(ctx, regions, ox, oy, iw, ih, showHandles, selectedIdx 
       });
     }
   });
+  ctx.globalAlpha = 1;
   placeLabels(ctx, labelJobs, ox, oy, iw, ih, lineScale);
 }
 
@@ -2450,7 +2477,7 @@ function placeLabels(ctx, jobs, ox0, oy0, iw0, ih0, lineScale = 1) {
     const lw = ctx.measureText(j.label).width + (big ? 8 : 4) * fs, lh = (big ? 16 : 11) * fs;
     const clamp = ([x, y]) => [Math.max(ox, Math.min(ox + iw - lw, x)), Math.max(oy, Math.min(oy + ih - lh, y))];
     const cands = [];
-    for (let ring = 0; ring < 8; ring++) {  // 0 = touching the box, then further out
+    for (let ring = 0; ring < 5; ring++) {  // 0 = touching the box, then further out
       const g = 1 + ring * lh;
       for (const f of [0, 1, 0.5, 0.25, 0.75]) {
         cands.push([j.rx + f * Math.max(0, j.rw - lw), j.ry - lh - g + 1]);        // above
@@ -2470,17 +2497,23 @@ function placeLabels(ctx, jobs, ox0, oy0, iw0, ih0, lineScale = 1) {
       cands.push(spot0);
     }
     let best = null, bestCost = Infinity;
-    cands.map(clamp).forEach(([x, y], n) => {
+    for (let n = 0; n < cands.length; n++) {  // nearest first: the first spot covering nothing is the answer
+      const [x, y] = clamp(cands[n]);
       const L = [x, y, x + lw, y + lh];
-      const labelHit = placed.reduce((a, P) => a + area(L, P), 0);
-      const boxHit = boxes.reduce((a, R) => a + area(L, R), 0);
+      let labelHit = 0;
+      for (const P of placed) { labelHit += area(L, P); if (labelHit * 1e6 >= bestCost) break; }
+      if (labelHit * 1e6 >= bestCost) continue;
+      let boxHit = 0;
+      for (const R of boxes) boxHit += area(L, R);
       const cost = labelHit * 1e6 + boxHit * 10 + n;  // label overlap >> covered content >> distance
       if (cost < bestCost) { bestCost = cost; best = [x, y]; }
-    });
+      if (labelHit === 0 && boxHit === 0) break;
+    }
     const spot = best;
     const [lx, ly] = spot;
     placed.push([lx, ly, lx + lw, ly + lh]);
     // background = the box colour (unknown class: red); text black or white, whichever reads on it
+    ctx.globalAlpha = j.am ?? 1;
     const bg = j.unknown ? '#ff0000' : toHex(j.color || colors[j.label] || '#888888');
     ctx.fillStyle = bg;
     ctx.fillRect(lx, ly, lw, lh);
@@ -2491,6 +2524,7 @@ function placeLabels(ctx, jobs, ox0, oy0, iw0, ih0, lineScale = 1) {
     }
     ctx.fillStyle = readableOn(bg);
     ctx.fillText(j.label, lx + (big ? 4 : 2) * fs, ly + (big ? 12 : 9) * fs);
+    ctx.globalAlpha = 1;
   }
 }
 
@@ -2627,8 +2661,9 @@ function gridMouseDown(e, index) {
   
   const canvas = e.target;
   const rect = canvas.getBoundingClientRect();
-  const mx = e.clientX - rect.left;
-  const my = e.clientY - rect.top;
+  // canvas pixels, not CSS pixels: the canvas is drawn smaller than its pixel size (item border, mosaic widths)
+  const mx = (e.clientX - rect.left) * canvas.width / rect.width;
+  const my = (e.clientY - rect.top) * canvas.height / rect.height;
 
   if (e.altKey) {
     const c = getCanvasCoords(canvas, index);
@@ -2700,8 +2735,9 @@ function gridMouseMove(e, index) {
   
   const canvas = e.target;
   const rect = canvas.getBoundingClientRect();
-  const mx = e.clientX - rect.left;
-  const my = e.clientY - rect.top;
+  // canvas pixels, not CSS pixels: the canvas is drawn smaller than its pixel size (item border, mosaic widths)
+  const mx = (e.clientX - rect.left) * canvas.width / rect.width;
+  const my = (e.clientY - rect.top) * canvas.height / rect.height;
   
   if (gridEditDrawing && drawingClass) {
     gridEditCurrent = { x: mx, y: my };
@@ -2778,8 +2814,8 @@ function gridMouseUp(e, index) {
   if (gridEditDrawing && drawingClass) {
     const canvas = e.target;
     const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
+    const mx = (e.clientX - rect.left) * canvas.width / rect.width;
+    const my = (e.clientY - rect.top) * canvas.height / rect.height;
     const coords = getCanvasCoords(canvas, index);
     
     if (coords) {
@@ -2863,6 +2899,20 @@ function getCanvasCoords(canvas, index) {
   return { x, y, w, h };
 }
 
+// the image scaled to the card once; animation frames (30 fps) and hover redraws reuse it
+function thumbOf(cached, w, h) {
+  w = Math.max(1, Math.round(w)); h = Math.max(1, Math.round(h));
+  const t = cached.thumb;
+  if (t && t.width === w && t.height === h && t.src === cached.img) return t;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h; c.src = cached.img;
+  const g = c.getContext('2d');
+  g.imageSmoothingQuality = 'high';
+  g.drawImage(cached.img, 0, 0, w, h);
+  cached.thumb = c;
+  return c;
+}
+
 function redrawGridCanvas(index) {
   const item = document.querySelector(`.grid-item[data-index="${index}"]`);
   if (!item) return;
@@ -2878,7 +2928,7 @@ function redrawGridCanvas(index) {
   
   ctx.fillStyle = '#0a0a0a';
   ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.drawImage(cached.img, coords.x, coords.y, coords.w, coords.h);
+  ctx.drawImage(thumbOf(cached, coords.w, coords.h), coords.x, coords.y, coords.w, coords.h);
   
   // Use correct regions based on whether this item is being edited
   const isEditing = editInGrid && gridEditIndex === index;
@@ -2931,7 +2981,7 @@ function redrawAllGridCanvases() {
 const zoomWindow = document.getElementById('zoom-window');
 const zoomCanvas = zoomWindow.querySelector('canvas');
 const zoomCtx = zoomCanvas.getContext('2d');
-const ZOOM_FACTOR = 3;
+let ZOOM_FACTOR = 3;  // magnification, from the "×" slider next to the zoom size
 let ZOOM_SIZE = 220;
 let lastZoomEvent = null;
 let lastZoomIndex = -1;
@@ -2942,7 +2992,15 @@ function refreshZoomWindow() {
     updateModalZoomWindow(lastZoomEvent);
   } else if (lastZoomEvent && lastZoomIndex >= 0) {
     updateZoomWindow(lastZoomEvent, lastZoomIndex);
+  } else if (lastZoomEvent && lastZoomIndex === SCREEN_ZOOM) {
+    if (gridZoomActive()) updateScreenZoom(lastZoomEvent);
   }
+}
+
+function updateZoomFactor() {
+  ZOOM_FACTOR = parseFloat(document.getElementById('zoom-factor').value) || 3;
+  document.getElementById('zoom-factor-v').textContent = '×' + ZOOM_FACTOR;
+  refreshZoomWindow();
 }
 
 function updateZoomSize() {
@@ -2967,15 +3025,46 @@ document.addEventListener('mousedown', e => {
   rmbDown = true;
   if (modalOpen && e.target === modalCanvas) updateModalZoomWindow(e);
   else if (lastZoomEvent && lastZoomIndex >= 0 && e.target === lastZoomEvent.target) updateZoomWindow(e, lastZoomIndex);
+  else if (e.target.closest('#grid-container')) updateScreenZoom(e);
 }, true);
+// RMB held over the gaps between cards: magnify what is on screen (all grid canvases under the square)
+function gridZoomActive() {  // the zoom follows the cursor over the whole grid, gaps included
+  return rmbZoom() || (document.getElementById('enable-zoom').checked && (editInGrid || drawingClass));
+}
+document.addEventListener('mousemove', e => {
+  if (modalOpen || e.target.classList.contains('grid-item-canvas') || !gridZoomActive()) return;
+  if (e.target.closest('#grid-container')) updateScreenZoom(e);
+  else if (lastZoomIndex === SCREEN_ZOOM) hideZoomWindow(null);  // left the grid
+});
+const SCREEN_ZOOM = -2;  // lastZoomIndex while the RMB zoom magnifies the screen (between cards)
+function updateScreenZoom(e) {
+  // remember it: animation ticks call refreshZoomWindow, which must redraw THIS view, not the last canvas one
+  lastZoomEvent = e;
+  lastZoomIndex = SCREEN_ZOOM;
+  const src = ZOOM_SIZE / ZOOM_FACTOR, sx = e.clientX - src / 2, sy = e.clientY - src / 2;
+  zoomWindow.style.left = e.clientX + 'px';
+  zoomWindow.style.top = e.clientY + 'px';
+  zoomWindow.style.display = 'block';
+  zoomCtx.setTransform(1, 0, 0, 1, 0, 0);
+  zoomCtx.fillStyle = '#0a0a0a';
+  zoomCtx.fillRect(0, 0, ZOOM_SIZE, ZOOM_SIZE);
+  zoomCtx.setTransform(ZOOM_FACTOR, 0, 0, ZOOM_FACTOR, -sx * ZOOM_FACTOR, -sy * ZOOM_FACTOR);
+  document.querySelectorAll('.grid-item-canvas').forEach(c => {
+    const r = c.getBoundingClientRect();
+    if (r.right < sx || r.bottom < sy || r.left > sx + src || r.top > sy + src) return;
+    zoomCtx.drawImage(c, r.left, r.top, r.width, r.height);
+  });
+  zoomCtx.setTransform(1, 0, 0, 1, 0, 0);
+}
 document.addEventListener('mouseup', e => {
   if (e.button !== 2 || !rmbDown) return;
   rmbDown = false;
   refreshZoomWindow();  // back to the normal rule (or hidden)
-  if (!document.getElementById('enable-zoom').checked) hideZoomWindow(lastZoomEvent && lastZoomEvent.target);
+  if (!document.getElementById('enable-zoom').checked || (lastZoomIndex === SCREEN_ZOOM && !gridZoomActive())) hideZoomWindow(lastZoomEvent && lastZoomEvent.target);
 }, true);
 document.addEventListener('contextmenu', e => {
-  if (document.getElementById('zoom-rmb').checked && e.target.tagName === 'CANVAS') e.preventDefault();
+  if (!document.getElementById('zoom-rmb').checked) return;
+  if (e.target.closest('#grid-container, #modal-canvas-container, #modal')) e.preventDefault();
 });
 
 function updateZoomWindow(e, index) {
@@ -2996,8 +3085,9 @@ function updateZoomWindow(e, index) {
   
   const canvas = e.target;
   const rect = canvas.getBoundingClientRect();
-  const mx = e.clientX - rect.left;
-  const my = e.clientY - rect.top;
+  // canvas pixels, not CSS pixels: the canvas is drawn smaller than its pixel size (item border, mosaic widths)
+  const mx = (e.clientX - rect.left) * canvas.width / rect.width;
+  const my = (e.clientY - rect.top) * canvas.height / rect.height;
   const coords = getCanvasCoords(canvas, index);
   if (!coords) return;
   
@@ -3013,19 +3103,28 @@ function updateZoomWindow(e, index) {
   const srcY = my - srcSize / 2;
   
   // Clear and draw zoomed image
+  zoomCtx.setTransform(1, 0, 0, 1, 0, 0);  // start clean whatever an earlier draw left behind
   zoomCtx.fillStyle = '#0a0a0a';
   zoomCtx.fillRect(0, 0, ZOOM_SIZE, ZOOM_SIZE);
   
-  // Draw the zoomed portion
+  // Draw the zoomed portion (transform set absolutely: an exception in an earlier draw must not compound the scale)
+  zoomCtx.setTransform(ZOOM_FACTOR, 0, 0, ZOOM_FACTOR, -srcX * ZOOM_FACTOR, -srcY * ZOOM_FACTOR);
   zoomCtx.save();
-  zoomCtx.scale(ZOOM_FACTOR, ZOOM_FACTOR);
-  zoomCtx.translate(-srcX, -srcY);
   
-  // Draw background
+  // neighbours: whatever other grid images are under the magnified square (as drawn on screen)
+  const kx = canvas.width / rect.width, ky = canvas.height / rect.height;
+  const leaves = srcX < 0 || srcY < 0 || srcX + srcSize > canvas.width || srcY + srcSize > canvas.height;
+  if (leaves) document.querySelectorAll('.grid-item-canvas').forEach(other => {
+    if (other === canvas) return;
+    const r2 = other.getBoundingClientRect();
+    const dx = (r2.left - rect.left) * kx, dy = (r2.top - rect.top) * ky, dw = r2.width * kx, dh = r2.height * ky;
+    if (dx > srcX + srcSize || dy > srcY + srcSize || dx + dw < srcX || dy + dh < srcY) return;
+    zoomCtx.drawImage(other, dx, dy, dw, dh);
+  });
+  
+  // Draw background of this canvas, then its image at full resolution
   zoomCtx.fillStyle = '#0a0a0a';
   zoomCtx.fillRect(0, 0, canvas.width, canvas.height);
-  
-  // Draw image
   zoomCtx.drawImage(cached.img, coords.x, coords.y, coords.w, coords.h);
   
   // Draw regions
@@ -3106,12 +3205,12 @@ function updateModalZoomWindow(e) {
   const srcY = my - srcSize / 2;
   
   // Clear and draw zoomed image
+  zoomCtx.setTransform(1, 0, 0, 1, 0, 0);  // start clean whatever an earlier draw left behind
   zoomCtx.fillStyle = '#0a0a0a';
   zoomCtx.fillRect(0, 0, ZOOM_SIZE, ZOOM_SIZE);
   
+  zoomCtx.setTransform(ZOOM_FACTOR, 0, 0, ZOOM_FACTOR, -srcX * ZOOM_FACTOR, -srcY * ZOOM_FACTOR);
   zoomCtx.save();
-  zoomCtx.scale(ZOOM_FACTOR, ZOOM_FACTOR);
-  zoomCtx.translate(-srcX, -srcY);
   
   // Draw image
   zoomCtx.drawImage(modalImg, 0, 0);
