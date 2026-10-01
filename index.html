@@ -221,7 +221,7 @@ body.no-sidebar #sidebar { display: none; }
   Alt+Hotkey → Change class<br>
   Ctrl+Drag → Clone region<br>
   Shift+Drag → Lock H/V axis<br>
-  R → Run detection<br>
+  R → Run detection (modal) · Shift+R → Detect Page<br>
   Del → Delete region<br>
   Arrows → Move region 1px<br>
   Shift+Arrows → Move 5px<br>
@@ -232,13 +232,17 @@ body.no-sidebar #sidebar { display: none; }
   Esc → Exit mark mode / close popup<br>
   Click (no drag) on the selected box → select the next box under the cursor<br>
   D column (classes) → Detect replaces only checked classes<br>
+  Click a constraint pill → accept it for that image (a legit case): faded, ignored by the filter and counters<br>
+  ✨ smart boxes + a class selected → dashed suggestion under the cursor, click takes it; stroke over an object → its box<br>
   ` / ~ → Toggle constraint violations on the card under the cursor<br>
   <br><b>Constraints</b> (sidebar, under classes): a broken rule shows as a pill next to the card's file name.
   Classes: comma-separated, empty or * = any.<br>
   count: number of A boxes within min..max<br>
+  count_in: number of A boxes is one of the listed numbers (e.g. hole cards 0,2,4,5,6)<br>
+  count_each: every class of A on its own within min..max (e.g. at most one bet / stack / nickname)<br>
   inside: every A lies inside some B (%: share of A covered by B; empty/0 = A's centre in B)<br>
   contains: every A contains min..max B (by B's centre)<br>
-  overlap: no A and B overlap more than % of the smaller box<br>
+  overlap: no A and B overlap more than % of the smaller box (B = "=": only boxes of the same class)<br>
   size: no A differs in area from the median A by more than %<br>
   implies: if any A is present, the number of B is within min..max (empty min = 1; max 0 = A excludes B)<br>
   ×N on a pill = number of offending boxes; the number on a rule = cards breaking it among loaded ones.
@@ -271,6 +275,7 @@ body.no-sidebar #sidebar { display: none; }
     <label><input type="checkbox" id="enable-zoom" checked onchange="saveSettings()"> Zoom cursor</label>
     <label title="Hold the right mouse button over an image to magnify, in any mode"><input type="checkbox" id="zoom-rmb" onchange="saveSettings()"> Show Zoom on RMB</label>
     <label title="With the mouse on a card, the selected box (or the hovered one) stays solid and the other boxes of that card fade"><input type="checkbox" id="dim-others" onchange="saveSettings(); redrawAllGridCanvases(); if (modalOpen) renderModal();"> Dim unselected</label>
+    <label title="Dim only around the selected box: full dim next to it, fading to none at this distance (screen px). 0 = dim every other box"> within <input type="number" id="dim-radius" value="20" min="0" max="500" style="width:46px" onchange="saveSettings(); redrawAllGridCanvases(); if (modalOpen) renderModal();"> px</label>
     <label title="Box labels appear only for the box under the cursor (and the selected one)"><input type="checkbox" id="labels-on-hover" onchange="saveSettings(); redrawAllGridCanvases(); if (modalOpen) renderModal();"> Show label only on hover</label>
     <input type="range" id="zoom-factor" min="1.5" max="8" step="0.5" value="3" title="Zoom strength" style="width:60px;vertical-align:middle;margin-left:6px;" oninput="updateZoomFactor()" onchange="saveSettings()"><span id="zoom-factor-v" style="font-size:11px;margin-left:2px;">×3</span>
     <input type="range" id="zoom-size" min="150" max="700" value="220" style="width:80px;vertical-align:middle;margin-left:8px;" onchange="updateZoomSize(); saveSettings()" oninput="updateZoomSize()">
@@ -344,17 +349,25 @@ body.no-sidebar #sidebar { display: none; }
     <button class="btn btn-secondary btn-sm" onclick="nextPage()">›</button>
     <button class="btn btn-secondary btn-sm" onclick="lastPage()">»»</button>
   </div>
+  <button class="btn btn-sm btn-secondary" onclick="detectPage()" title="Shift+R: run the model on every card of the page (only classes checked in column D); results stay unsaved until Save Page">Detect Page</button>
   <button class="btn btn-sm" onclick="saveAllOnPage()" title="Space: save page &amp; next">Save Page</button>
     </div>
     <h3>Classes (click key to edit)</h3>
     <div id="class-buttons"></div>
     <button id="add-class-btn" class="btn btn-sm" onclick="showAddClassPrompt()" style="width:100%;margin:8px 0;">+ Add Class</button>
-    <h3 style="margin-top:6px">Constraints</h3>
+    <label style="font-size:11px;" title="With a class selected: the box under the cursor is suggested (dashed) - click takes it; a stroke over the object makes its box. Our model's proposals of that class first, SAM otherwise"><input type="checkbox" id="smart-mode" onchange="smartChanged()"> ✨ smart boxes</label>
+    <label style="font-size:11px;" title="Suggest the model's low-confidence boxes of the selected class before SAM (needs Model path)"><input type="checkbox" id="smart-model" checked onchange="saveSettings()"> model hints first</label>
+    <h3 style="margin-top:6px" id="constraints-title" title="Shared by every dataset of this level">Constraints</h3>
     <label style="font-size:11px;" title="Outline the boxes breaking any enabled rule on the card under the cursor (hotkey ` / ~)"><input type="checkbox" id="show-violations" onchange="setAllConstraints(this.checked); this.blur()"> highlight violations <span style="color:#777">(`)</span></label>
     <label style="font-size:11px;" title="Filter: frames breaking any enabled constraint (the counter on a rule filters by that rule)"><input type="checkbox" id="only-broken" onchange="filterBroken(this.checked ? '' : null)"> only frames breaking a rule</label>
     <datalist id="constraint-classes"></datalist>
     <div id="constraints"></div>
-    <button class="btn btn-sm btn-secondary" onclick="addConstraint()" style="width:100%;">+ Rule</button>
+    <div style="display:flex;gap:4px;">
+      <button class="btn btn-sm btn-secondary" onclick="addConstraint()" style="flex:1;">+ Rule</button>
+      <button class="btn btn-sm btn-secondary" onclick="exportConstraints()" title="Save the rules to a .json file">Export</button>
+      <button class="btn btn-sm btn-secondary" onclick="document.getElementById('constraints-import').click()" title="Load rules from a .json file: same name replaces, new ones are added">Import</button>
+    </div>
+    <input type="file" id="constraints-import" accept=".json,application/json" style="display:none" onchange="importConstraints(this)">
   </div>
 </div>
 
@@ -1328,7 +1341,12 @@ async function createYaml() {
 // rule: {name, color, on, type: count|inside|contains|overlap|size, a, b (class lists), min, max, t (%)}
 let constraints = [];
 const CONSTRAINT_FIELDS = { count: ['a', 'min', 'max'], inside: ['a', 'b', 't'], contains: ['a', 'b', 'min', 'max'],
-                            overlap: ['a', 'b', 't'], size: ['a', 't'], implies: ['a', 'b', 'min', 'max'] };
+                            overlap: ['a', 'b', 't'], size: ['a', 't'], implies: ['a', 'b', 'min', 'max'],
+                            count_in: ['a', 'vals'], count_each: ['a', 'min', 'max'] };
+// what a rule REQUIRES (it is broken when this does not hold) - shown on the rule card
+const CONSTRAINT_HINT = { count: 'OK: min ≤ #A ≤ max', inside: 'OK: every A inside some B', contains: 'OK: every A holds min..max B',
+                          overlap: 'OK: no A/B overlap > % (B "=": same class)', size: 'OK: A area within % of median', implies: 'OK: A present → min..max B',
+                          count_in: 'OK: #A is one of the listed numbers', count_each: 'OK: every class of A: min ≤ # ≤ max' };
 const CONSTRAINT_PALETTE = ['#ff5252', '#ffab40', '#ffd740', '#69f0ae', '#40c4ff', '#b388ff', '#ff80ab', '#a7ffeb'];
 
 function classMatcher(list) {
@@ -1352,8 +1370,19 @@ function constraintOffenders(rule, regions) {
     const broken = A.length < lo || A.length > hi;
     return { broken, boxes: broken ? A : [] };
   }
+  if (rule.type === 'count_in') {  // allowed totals, e.g. hole cards "0,2,4,5,6"
+    const ok = String(rule.vals || '').split(',').map(x => parseInt(x)).filter(x => !isNaN(x));
+    const broken = ok.length > 0 && !ok.includes(A.length);
+    return { broken, boxes: broken ? A : [] };
+  }
+  if (rule.type === 'count_each') {  // every class of A on its own, e.g. one bet / stack / nickname per crop
+    const by = {};
+    A.forEach(r => (by[r.class] = by[r.class] || []).push(r));
+    const bad = Object.values(by).filter(g => g.length < lo || g.length > hi).flat();
+    return { broken: bad.length > 0, boxes: bad };
+  }
   if (rule.type === 'implies') {  // if any A is present, the number of B must be within min..max (min defaults to 1)
-    const broken = A.length > 0 && (B.length < num(rule.min, 1) || B.length > hi);
+    const broken = A.length > 0 && (B.length < num(rule.min, hi >= 1 ? 1 : 0) || B.length > hi);  // max 0: A excludes B
     return { broken, boxes: broken ? A.concat(B) : [] };
   }
   if (rule.type === 'inside')
@@ -1361,10 +1390,11 @@ function constraintOffenders(rule, regions) {
       return !B.some(rb => rb !== ra && (t > 0 ? interOf(a, xyxy(rb)) >= t * areaOf(a) : centreIn(a, xyxy(rb)))); });
   else if (rule.type === 'contains')
     bad = A.filter(ra => { const n = B.filter(rb => rb !== ra && centreIn(xyxy(rb), xyxy(ra))).length; return n < lo || n > hi; });
-  else if (rule.type === 'overlap') {
+  else if (rule.type === 'overlap') {  // B '=': the same class as A (boxes of one class overlapping each other)
+    const same = String(rule.b || '').trim() === '=';
     const set = new Set();
-    A.forEach(ra => B.forEach(rb => {
-      if (ra === rb) return;
+    A.forEach(ra => (same ? A : B).forEach(rb => {
+      if (ra === rb || (same && ra.class !== rb.class)) return;
       const a = xyxy(ra), b = xyxy(rb);
       if (interOf(a, b) > t * Math.min(areaOf(a), areaOf(b))) { set.add(ra); set.add(rb); }
     }));
@@ -1378,7 +1408,18 @@ function constraintOffenders(rule, regions) {
 // number of offending boxes (count rule: 1 when broken)
 function checkConstraint(rule, regions) {
   const o = constraintOffenders(rule, regions);
-  return !o.broken ? 0 : rule.type === 'count' || rule.type === 'implies' ? 1 : o.boxes.length;
+  return !o.broken ? 0 : ['count', 'implies', 'count_in'].includes(rule.type) ? 1 : o.boxes.length;
+}
+
+// accepted violations: {image stem: [rule names]} - a rule the image legitimately breaks (a click on its pill)
+let constraintAcks = {};
+function stemOf(path) { return String(path).split(/[/\\]/).pop().replace(/\.[^.]+$/, ''); }
+function isAcked(path, c) { return (constraintAcks[stemOf(path)] || []).includes(c.name); }
+function toggleAck(path, c) {
+  const k = stemOf(path), l = constraintAcks[k] || [];
+  constraintAcks[k] = l.includes(c.name) ? l.filter(n => n !== c.name) : [...l, c.name];
+  if (!constraintAcks[k].length) delete constraintAcks[k];
+  saveSettings();
 }
 
 function brokenConstraints(regions) {
@@ -1402,28 +1443,50 @@ function setAllConstraints(on) {
   if (hoveredCard >= 0 && !modalOpen) redrawGridCanvas(hoveredCard); else redrawAllGridCanvases();
   if (modalOpen) renderModal();
 }
+// a selection in the grid ends by itself: 10 s on another card, or 30 s without the mouse on its card
+let selCardSeen = Date.now(), otherCardSince = 0;
+setInterval(() => {
+  if (!editInGrid || gridEditSelectedIdx < 0 || gridEditIndex < 0 || modalOpen) return;
+  const now = Date.now();
+  if (hoveredCard === gridEditIndex) { selCardSeen = now; otherCardSince = 0; return; }
+  if (hoveredCard >= 0 && !otherCardSince) otherCardSince = now;
+  if (hoveredCard < 0) otherCardSince = 0;
+  if (now - selCardSeen > 30000 || (otherCardSince && now - otherCardSince > 10000)) {
+    gridEditSelectedIdx = -1;
+    redrawGridCanvas(gridEditIndex);
+    refreshZoomWindow();
+  }
+}, 1000);
+
 function cardRegions(i) {
   return editInGrid && gridEditIndex === i ? gridEditRegions : imageCache[images[i]]?.regions;
 }
+// true when something was highlighted (the caller keeps the animation running for the gentle pulse)
 function drawConstraintFocus(ctx, regions, ox, oy, iw, ih, lineScale) {
+  let rules = [];
   if (constraintFocus) {
-    if (!constraintFocusRegions || constraintFocusRegions === regions) drawRuleOffenders(ctx, constraintFocus, regions, ox, oy, iw, ih, lineScale);
+    if (!constraintFocusRegions || constraintFocusRegions === regions) rules = [constraintFocus];
   } else if (showAllConstraints && (modalOpen ? regions === modalRegions : hoveredCard < 0 || regions === cardRegions(hoveredCard))) {
-    for (const c of constraints) if (c.on !== false && c.name) drawRuleOffenders(ctx, c, regions, ox, oy, iw, ih, lineScale);
+    rules = constraints.filter(c => c.on !== false && c.name);
   }
-}
-function drawRuleOffenders(ctx, rule, regions, ox, oy, iw, ih, lineScale) {
-  const color = rule.color || '#ff5252';
+  const hit = new Map();  // offending region -> colour of the first rule it breaks
+  for (const rule of rules) for (const r of constraintOffenders(rule, regions).boxes) if (!hit.has(r)) hit.set(r, rule.color || '#ff5252');
+  if (!hit.size) return false;
+  const px = r => { const [x1, y1, x2, y2] = xyxy(r); return [ox + x1 * iw, oy + y1 * ih, (x2 - x1) * iw, (y2 - y1) * ih]; };
+  const pulse = 0.5 + 0.5 * Math.sin(animationPhase * 0.6);  // slow, subtle
   ctx.save();
-  for (const r of constraintOffenders(rule, regions).boxes) {
-    const [x1, y1, x2, y2] = xyxy(r), pad = 3 * lineScale;
-    const x = ox + x1 * iw - pad, y = oy + y1 * ih - pad, w = (x2 - x1) * iw + 2 * pad, h = (y2 - y1) * ih + 2 * pad;
-    ctx.globalAlpha = 0.25; ctx.fillStyle = color; ctx.fillRect(x, y, w, h);
-    ctx.globalAlpha = 1; ctx.lineWidth = 3 * lineScale;
-    ctx.strokeStyle = '#000'; ctx.strokeRect(x - lineScale, y - lineScale, w + 2 * lineScale, h + 2 * lineScale);
-    ctx.strokeStyle = color; ctx.strokeRect(x, y, w, h);
+  // the other boxes step back a little (~15%)
+  ctx.fillStyle = '#000'; ctx.globalAlpha = 0.15;
+  for (const r of regions) if (!hit.has(r)) { const [x, y, w, h] = px(r); ctx.fillRect(x - 2 * lineScale, y - 2 * lineScale, w + 4 * lineScale, h + 4 * lineScale); }
+  for (const [r, color] of hit) {
+    const pad = 1.5 * lineScale;
+    let [x, y, w, h] = px(r); x -= pad; y -= pad; w += 2 * pad; h += 2 * pad;
+    ctx.globalAlpha = 0.08 + 0.08 * pulse; ctx.fillStyle = color; ctx.fillRect(x, y, w, h);
+    ctx.globalAlpha = 0.5; ctx.lineWidth = 2.5 * lineScale; ctx.strokeStyle = '#000'; ctx.strokeRect(x, y, w, h);
+    ctx.globalAlpha = 0.75 + 0.25 * pulse; ctx.lineWidth = 1.5 * lineScale; ctx.strokeStyle = color; ctx.strokeRect(x, y, w, h);
   }
   ctx.restore();
+  return true;
 }
 
 // called on every redraw (animations included): touch the DOM only when the result changes
@@ -1432,7 +1495,7 @@ function updateConstraintPills(index, regions) {
   if (!el) return;
   regions = regions || imageCache[images[index]]?.regions;
   const broken = brokenConstraints(regions);
-  const key = broken.map(([c, n]) => constraints.indexOf(c) + ':' + n + ':' + c.name + c.color).join('|');
+  const key = broken.map(([c, n]) => constraints.indexOf(c) + ':' + n + ':' + c.name + c.color + isAcked(images[index], c)).join('|');
   if (el.dataset.key !== key) {
     el.dataset.key = key;
     el.innerHTML = '';
@@ -1442,7 +1505,10 @@ function updateConstraintPills(index, regions) {
       pill.style.background = c.color || '#ff5252';
       pill.style.color = getContrastColor(c.color || '#ff5252');
       pill.textContent = n > 1 ? `${c.name} ×${n}` : c.name;
-      pill.title = `${c.type}: ${n} offending box(es)`;
+      const acked = isAcked(images[index], c);
+      pill.title = acked ? 'accepted for this image (click to undo)' : `${c.type}: ${n} offending box(es) - click: accept (a legit case)`;
+      if (acked) { pill.style.opacity = '0.35'; pill.style.textDecoration = 'line-through'; }
+      pill.onclick = e => { e.stopPropagation(); toggleAck(images[index], c); el.dataset.key = ''; updateConstraintPills(index); updateConstraintHits(); };
       pill.onmouseenter = () => {
         const i = index, cached = imageCache[images[i]];
         setConstraintFocus(c, editInGrid && gridEditIndex === i ? gridEditRegions : cached?.regions);
@@ -1460,12 +1526,57 @@ function addConstraint() {
                      on: true, type: 'count', a: '', b: '', min: '', max: '1', t: '90' });
   constraintsChanged(true);
 }
+// the level's shared rule file (parent folder of the dataset); an old per-dataset list seeds it once
+async function loadLevelConstraints(fallback) {
+  let rules = null, file = '';
+  try {
+    const r = await (await fetch(`/constraints?base=${encodeURIComponent(datasetBase)}`)).json();
+    rules = r.constraints; file = r.file;
+  } catch (e) {}
+  constraints = Array.isArray(rules) ? rules : (Array.isArray(fallback) ? fallback : []);
+  if (!Array.isArray(rules) && constraints.length) saveLevelConstraints();
+  const t = document.getElementById('constraints-title');
+  t.textContent = `Constraints · ${datasetBase.split(/[/\\]/).filter(Boolean).slice(-2, -1)[0] || ''}`;
+  t.title = 'Shared by every dataset of this level: ' + file;
+  renderConstraints();
+}
+function saveLevelConstraints() {
+  clearTimeout(saveLevelConstraints.t);
+  saveLevelConstraints.t = setTimeout(() => fetch('/constraints', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ base: datasetBase, constraints }) }).catch(() => setStatus('Constraints: save failed')), 300);
+}
+function exportConstraints() {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify(constraints, null, 2)], { type: 'application/json' }));
+  a.download = `constraints_${datasetBase.split(/[/\\]/).filter(Boolean).slice(-2, -1)[0] || 'level'}.json`;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+async function importConstraints(input) {
+  const f = input.files[0];
+  input.value = '';
+  if (!f) return;
+  try {
+    let rules = JSON.parse(await f.text());
+    if (!Array.isArray(rules)) rules = rules.constraints;
+    if (!Array.isArray(rules)) throw new Error('not a list of rules');
+    let added = 0, replaced = 0;
+    for (const r of rules) {
+      if (!r || !r.name || !CONSTRAINT_FIELDS[r.type]) continue;
+      const i = constraints.findIndex(c => c.name === r.name);
+      if (i >= 0) { constraints[i] = r; replaced++; } else { constraints.push(r); added++; }
+    }
+    constraintsChanged(true);
+    setStatus(`Constraints imported: ${added} added, ${replaced} replaced`);
+  } catch (e) { setStatus('Constraints import failed: ' + e.message); }
+}
+
 function constraintsChanged(rerender) {
   if (rerender) renderConstraints(); else updateConstraintHits();
   if (constraintFocus) { redrawAllGridCanvases(); if (modalOpen) renderModal(); }
   const start = currentPage * perPage, end = Math.min(start + perPage, images.length);
   for (let i = start; i < end; i++) updateConstraintPills(i);
-  saveSettings();
+  saveLevelConstraints();
 }
 function renderConstraints() {
   document.getElementById('constraint-classes').innerHTML = Object.values(classNames).map(n => `<option value="${n}">`).join('');
@@ -1501,8 +1612,12 @@ function renderConstraints() {
     row(on, field('color', 'colour', '', 'color'), field('name', 'name'), del);
     const f = CONSTRAINT_FIELDS[c.type] || [];
     row(type, hit);
+    const hint = document.createElement('span');
+    hint.style.cssText = 'font-size:10px;color:#999;'; hint.textContent = CONSTRAINT_HINT[c.type] || '';
+    row(hint);
     if (f.includes('a')) row(field('a', 'A classes'));
     if (f.includes('b')) row(field('b', 'B classes'));
+    if (f.includes('vals')) row(field('vals', 'allowed counts, e.g. 0,2,4'));
     const nums = ['min', 'max', 't'].filter(k => f.includes(k)).map(k => field(k, k === 't' ? '%' : k, 'cnum'));
     if (nums.length) row(...nums);
     box.appendChild(card);
@@ -1511,10 +1626,10 @@ function renderConstraints() {
 }
 // how many already-loaded images break each rule
 function updateConstraintHits() {
-  const loaded = Object.values(imageCache).filter(x => Array.isArray(x.regions));
+  const loaded = Object.entries(imageCache).filter(([, x]) => Array.isArray(x.regions));
   document.querySelectorAll('#constraints .chit').forEach(el => {
     const c = constraints[+el.dataset.rule];
-    el.textContent = c ? loaded.filter(x => checkConstraint(c, x.regions) > 0).length + '/' + loaded.length : '';
+    el.textContent = c ? loaded.filter(([p, x]) => !isAcked(p, c) && checkConstraint(c, x.regions) > 0).length + '/' + loaded.length : '';
   });
 }
 const POPS = ['header', 'settings-bar', 'help-pop'];
@@ -1527,6 +1642,92 @@ document.addEventListener('mousedown', e => {  // a click outside closes the pop
   if (!datasetBase) return;  // the loader stays open until a dataset is loaded
   closePops();
 });
+
+// ---- Smart boxes: hover suggestion + click, or a stroke over the object -> box (server /smart: model proposals, SAM) ----
+const smart = { regions: null, path: null, preview: null, stroke: null, strokeAt: null, strokeStart: null, busy: false, next: null };
+function smartActive() { return !!drawingClass && document.getElementById('smart-mode').checked; }
+function smartChanged() { smart.preview = smart.stroke = null; saveSettings(); redrawAllGridCanvases(); if (modalOpen) renderModal(); }
+async function smartRequest(path, points) {
+  const clsId = Object.entries(classNames).find(([k, v]) => v === drawingClass)?.[0];
+  try {
+    const res = await fetch('/smart', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+      path, points, cls_id: clsId !== undefined ? parseInt(clsId) : null,
+      model: document.getElementById('model-path').value.trim(), use_model: document.getElementById('smart-model').checked }) });
+    return (await res.json()).box || null;
+  } catch (e) { return null; }
+}
+// hover: one request in flight, only the latest cursor position matters
+async function smartHover(path, regions, pt, redraw) {
+  smart.next = { path, regions, pt, redraw };
+  if (smart.busy) return;
+  smart.busy = true;
+  while (smart.next) {
+    const job = smart.next; smart.next = null;
+    const box = smartActive() ? await smartRequest(job.path, [job.pt]) : null;
+    if (smart.stroke) continue;  // a stroke started meanwhile: no suggestion over it
+    smart.preview = box; smart.path = job.path; smart.regions = job.regions;
+    job.redraw();
+  }
+  smart.busy = false;
+}
+function smartClear(redraw) { if (smart.preview || smart.stroke) { smart.preview = null; smart.stroke = null; redraw(); } }
+function drawSmart(ctx, regions, ox, oy, iw, ih, lineScale) {
+  if (!smartActive() || smart.regions !== regions) return;
+  lineScale = 1;  // thin at any zoom: the suggestion must not hide what it outlines
+  const color = colors[drawingClass] || '#fff';
+  ctx.save();
+  if (smart.stroke && smart.stroke.length > 1) {
+    ctx.strokeStyle = color; ctx.lineWidth = 2 * lineScale; ctx.globalAlpha = 0.8; ctx.lineJoin = ctx.lineCap = 'round';
+    ctx.beginPath();
+    smart.stroke.forEach(([x, y], i) => (i ? ctx.lineTo : ctx.moveTo).call(ctx, ox + x * iw, oy + y * ih));
+    ctx.stroke();
+  } else if (smart.preview) {
+    const [cx, cy, w, h] = smart.preview;
+    ctx.setLineDash([5 * lineScale, 4 * lineScale]); ctx.lineWidth = 1.5 * lineScale;
+    ctx.strokeStyle = '#000'; ctx.globalAlpha = 0.6;
+    ctx.strokeRect(ox + (cx - w / 2) * iw - lineScale, oy + (cy - h / 2) * ih - lineScale, w * iw + 2 * lineScale, h * ih + 2 * lineScale);
+    ctx.strokeStyle = color; ctx.globalAlpha = 1;
+    ctx.strokeRect(ox + (cx - w / 2) * iw, oy + (cy - h / 2) * ih, w * iw, h * ih);
+  }
+  ctx.restore();
+}
+// mouse-up of a smart gesture: a click takes the suggestion (or asks for the point), a stroke asks for its box
+// a gesture is a click only when the cursor never went more than a few pixels away (a small scribble returns home)
+function smartMoved(e) { smart.moved = Math.max(smart.moved || 0, Math.hypot(e.clientX - smart.strokeStart.x, e.clientY - smart.strokeStart.y)); }
+async function smartFinish(e, path, add) {
+  const pts = smart.stroke || [];
+  const click = Math.max(smart.moved || 0, Math.hypot(e.clientX - smart.strokeStart.x, e.clientY - smart.strokeStart.y)) < 4;
+  smart.stroke = null;
+  let box = click && smart.preview && smart.path === path ? smart.preview : null;
+  if (!box && pts.length) {
+    const step = Math.max(1, Math.ceil(pts.length / 12));  // a dozen points describe a stroke well enough
+    box = await smartRequest(path, click ? [pts[0]] : pts.filter((_, i) => i % step === 0));
+  }
+  smart.preview = null;
+  if (box && box[2] > 0 && box[3] > 0) add(box); else setStatus('Smart box: nothing found here');
+}
+function smartNewRegion(box) {
+  const classId = Object.entries(classNames).find(([k, v]) => v === drawingClass)?.[0];
+  return { class: drawingClass, class_id: classId ? parseInt(classId) : -1, box: [...box] };
+}
+function smartAddGrid(index, box) {
+  gridEditRegions.push(smartNewRegion(box));
+  gridEditSelectedIdx = gridEditRegions.length - 1;
+  const path = images[index];
+  imageCache[path].regions = JSON.parse(JSON.stringify(gridEditRegions));
+  scheduleAutoSave(path, gridEditRegions);
+  if (document.getElementById('deselect-after-draw').checked) { drawingClass = null; updateModeIndicator(); }
+  redrawGridCanvas(index);
+  refreshZoomWindow();
+}
+function smartAddModal(box) {
+  modalRegions.push(smartNewRegion(box));
+  modalSelectedIdx = modalRegions.length - 1;
+  renderModalRegionsList();
+  if (document.getElementById('deselect-after-draw').checked) { drawingClass = null; updateModeIndicator(); }
+  renderModal();
+  updateModalInfo();
+}
 
 function openHotkeyEditor() {
   // Could open a full editor, for now just show info
@@ -1691,15 +1892,18 @@ async function loadLabelCache() {
         countedClasses = new Set(s.countedClasses);
       }
       if (s.classStyle && typeof s.classStyle === 'object') classStyle = s.classStyle;
-      constraints = Array.isArray(s.constraints) ? s.constraints : [];
-      renderConstraints();
+      await loadLevelConstraints(s.constraints);
       if (s.overlapBright !== undefined) document.getElementById('overlap-bright').value = s.overlapBright;
       if (s.labelsOnHover !== undefined) document.getElementById('labels-on-hover').checked = s.labelsOnHover;
       if (s.dimOthers !== undefined) document.getElementById('dim-others').checked = s.dimOthers;
+      if (s.dimRadius !== undefined) document.getElementById('dim-radius').value = s.dimRadius;
       if (s.hiddenTintClasses && Array.isArray(s.hiddenTintClasses)) {
         hiddenTintClasses = new Set(s.hiddenTintClasses);
       }
       if (Array.isArray(s.noDetectClasses)) noDetectClasses = new Set(s.noDetectClasses);
+      constraintAcks = (labelCache.settings || {}).constraintAcks || {};
+      if (s.smartMode !== undefined) document.getElementById('smart-mode').checked = s.smartMode;
+      if (s.smartModel !== undefined) document.getElementById('smart-model').checked = s.smartModel;
       if (s.ignoreOverlapClasses && Array.isArray(s.ignoreOverlapClasses)) {
         ignoreOverlapClasses = new Set(s.ignoreOverlapClasses);
       }
@@ -1732,7 +1936,7 @@ async function loadLabelCache() {
 }
 
 // Settings that follow the dataset; everything else (view, grid, highlight, class colours/toggles) is global
-const DATASET_ONLY_SETTINGS = ['modelPath', 'autoDetect', 'autosaveOnDetect', 'constraints'];
+const DATASET_ONLY_SETTINGS = ['modelPath', 'autoDetect', 'autosaveOnDetect', 'constraints', 'constraintAcks'];
 const GLOBAL_SETTINGS_KEY = 'yoloLabelerSettings';
 
 function loadGlobalSettings() {
@@ -1763,15 +1967,18 @@ async function saveSettings() {
     overlapBright: document.getElementById('overlap-bright').value,
     labelsOnHover: document.getElementById('labels-on-hover').checked,
     dimOthers: document.getElementById('dim-others').checked,
+    dimRadius: document.getElementById('dim-radius').value,
     ignoreOverlapClasses: Array.from(ignoreOverlapClasses),
     noDetectClasses: Array.from(noDetectClasses),
+    smartMode: document.getElementById('smart-mode').checked,
+    constraintAcks: constraintAcks,
+    smartModel: document.getElementById('smart-model').checked,
     gridCols: document.getElementById('grid-cols').value,
     fullWidthMode: document.getElementById('full-width-mode').checked,
     mosaicMode: document.getElementById('mosaic-mode').checked,
     gridRows: document.getElementById('grid-rows').value,
     paginateGrid: document.getElementById('paginate-grid').checked,
-    customColors: customColors,
-    constraints: constraints
+    customColors: customColors
   };
   const globalSettings = {...settings};
   DATASET_ONLY_SETTINGS.forEach(k => delete globalSettings[k]);
@@ -1993,6 +2200,7 @@ function createGridItem(index, w, h, fullWidthMode = false) {
     const next = takeClickCycle(e);
     if (next >= 0 && editInGrid && gridEditIndex === index) { gridEditSelectedIdx = next; redrawGridCanvas(index); refreshZoomWindow(); }
   });
+  canvas.addEventListener('mouseleave', () => { if (!smart.stroke) smartClear(() => redrawGridCanvas(index)); });
   canvas.addEventListener('mouseleave', (e) => { if (!gridZoomActive()) hideZoomWindow(e.target); else e.target.style.cursor = ''; if (setHover(null, -1)) redrawGridCanvas(index); });
   canvas.addEventListener('mousemove', (e) => {
     const cached = imageCache[images[index]];
@@ -2560,8 +2768,26 @@ function renderModalCanvas() {
 
 function drawRegions(ctx, regions, ox, oy, iw, ih, showHandles, selectedIdx = -1, lineScale = 1) {
   drawRegionsBase(ctx, regions, ox, oy, iw, ih, showHandles, selectedIdx, lineScale);
+  if (selectedIdx >= 0 && regions[selectedIdx]) {  // black halo + moving white dashes: visible on any background
+    const b = regions[selectedIdx].box, pad = 2 * lineScale;
+    const x = ox + (b[0] - b[2] / 2) * iw - pad, y = oy + (b[1] - b[3] / 2) * ih - pad;
+    const w = b[2] * iw + 2 * pad, h = b[3] * ih + 2 * pad;
+    ctx.save();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = '#000'; ctx.lineWidth = 3.5 * lineScale; ctx.strokeRect(x, y, w, h);
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5 * lineScale;
+    ctx.setLineDash([5 * lineScale, 4 * lineScale]); ctx.lineDashOffset = -animationPhase * 3 * lineScale;
+    ctx.strokeRect(x, y, w, h);
+    ctx.restore();
+    lastDrawAnimated = true;
+    if (!animationRunning) startAnimation();
+  }
   if (overlapAreaMode()) drawOverlapAreas(ctx, findOverlapRects(regions), ox, oy, iw, ih, lineScale);
-  drawConstraintFocus(ctx, regions, ox, oy, iw, ih, lineScale);
+  drawSmart(ctx, regions, ox, oy, iw, ih, lineScale);
+  if (drawConstraintFocus(ctx, regions, ox, oy, iw, ih, lineScale)) {
+    lastDrawAnimated = true;
+    if (!animationRunning) startAnimation();
+  }
 }
 
 function drawRegionsBase(ctx, regions, ox, oy, iw, ih, showHandles, selectedIdx = -1, lineScale = 1) {
@@ -2587,8 +2813,16 @@ function drawRegionsBase(ctx, regions, ox, oy, iw, ih, showHandles, selectedIdx 
   // "Dim others": the mouse is on THIS card and a box is selected (else hovered) -> every other box fades
   const focus = selectedIdx >= 0 ? selectedIdx : (hoverRegion.regions === regions ? hoverRegion.idx : -1);
   const dimOthers = document.getElementById('dim-others')?.checked && hoverRegion.regions === regions && focus >= 0;
+  const dimR = parseFloat(document.getElementById('dim-radius')?.value) || 0;
+  const fb = focus >= 0 && regions[focus] ? regions[focus].box : null;
+  const dimOf = (r) => {  // 0.25 next to the focused box, back to 1 at dimR screen px away (0: everything dims)
+    if (!dimR || !fb) return 0.25;
+    const gx = Math.max(0, Math.abs(r.box[0] - fb[0]) - (r.box[2] + fb[2]) / 2) * iw;
+    const gy = Math.max(0, Math.abs(r.box[1] - fb[1]) - (r.box[3] + fb[3]) / 2) * ih;
+    return 0.25 + 0.75 * Math.min(1, Math.hypot(gx, gy) / lineScale / dimR);
+  };
   regions.forEach((r, i) => {
-    const am = dimOthers && i !== focus ? 0.25 : 1;  // alpha multiplier of this box
+    const am = dimOthers && i !== focus ? dimOf(r) : 1;  // alpha multiplier of this box
     ctx.globalAlpha = am;
     const unknown = isUnknownClass(r.class);
     const overlapBorder = overlaps.has(i);
@@ -3017,6 +3251,14 @@ function gridMouseDown(e, index) {
     }
   }
 
+  if (smartActive()) {
+    const c = getCanvasCoords(canvas, index);
+    if (c) {
+      smart.stroke = [[(mx - c.x) / c.w, (my - c.y) / c.h]]; smart.strokeAt = index;
+      smart.strokeStart = { x: e.clientX, y: e.clientY }; smart.moved = 0; smart.regions = gridEditRegions;
+      return;
+    }
+  }
   if (drawingClass) {
     gridEditDrawing = true;
     gridEditStart = { x: mx, y: my };
@@ -3061,6 +3303,15 @@ function gridMouseDown(e, index) {
 }
 
 function gridMouseMove(e, index) {
+  if (smartActive() && editInGrid) {
+    const canvas = e.target, rect = canvas.getBoundingClientRect(), c = getCanvasCoords(canvas, index);
+    if (c) {
+      const n = [((e.clientX - rect.left) * canvas.width / rect.width - c.x) / c.w, ((e.clientY - rect.top) * canvas.height / rect.height - c.y) / c.h];
+      if (smart.stroke && smart.strokeAt === index) { smart.stroke.push(n); smartMoved(e); redrawGridCanvas(index); return; }
+      if (!e.buttons && n[0] >= 0 && n[0] <= 1 && n[1] >= 0 && n[1] <= 1)
+        smartHover(images[index], (gridEditIndex === index ? gridEditRegions : imageCache[images[index]]?.regions) || [], n, () => redrawGridCanvas(index));
+    }
+  }
   if (!editInGrid || gridEditIndex !== index) return;
   
   const canvas = e.target;
@@ -3140,6 +3391,10 @@ function gridMouseMove(e, index) {
 function gridMouseUp(e, index) {
   if (e.button === 2) return;
   if (!editInGrid || gridEditIndex !== index) return;
+  if (smart.stroke && smart.strokeAt === index) {
+    smartFinish(e, images[index], box => smartAddGrid(index, box));
+    return;
+  }
   
   if (gridEditDrawing && drawingClass) {
     const canvas = e.target;
@@ -3922,6 +4177,11 @@ modalCanvas.addEventListener('mousedown', e => {
     }
   }
 
+  if (smartActive()) {
+    smart.stroke = [[mx / modalCanvas.width, my / modalCanvas.height]]; smart.strokeAt = 'modal';
+    smart.strokeStart = { x: e.clientX, y: e.clientY }; smart.moved = 0; smart.regions = modalRegions;
+    return;
+  }
   if (drawingClass) {
     modalDrawing = true;
     modalStart = { x: mx, y: my };
@@ -3980,6 +4240,11 @@ modalCanvas.addEventListener('mousemove', e => {
     const rect = modalCanvas.getBoundingClientRect();
     const mx = (e.clientX - rect.left) * modalCanvas.width / rect.width, my = (e.clientY - rect.top) * modalCanvas.height / rect.height;
     if (setHover(modalRegions, regionAt(modalRegions, mx, my, 0, 0, modalCanvas.width, modalCanvas.height))) renderModal();
+    if (smartActive()) {
+      const n = [mx / modalCanvas.width, my / modalCanvas.height];
+      if (smart.stroke && smart.strokeAt === 'modal') { smart.stroke.push(n); smartMoved(e); renderModal(); return; }
+      if (!e.buttons) smartHover(images[modalIndex], modalRegions, n, () => renderModal());
+    }
   }
   const rect = modalCanvas.getBoundingClientRect();
   const sx = modalCanvas.width / rect.width;
@@ -4079,6 +4344,10 @@ modalCanvas.addEventListener('mouseleave', () => {
 
 modalCanvas.addEventListener('mouseup', e => {
   if (e.button === 2) return;
+  if (smart.stroke && smart.strokeAt === 'modal') {
+    smartFinish(e, images[modalIndex], box => smartAddModal(box));
+    return;
+  }
   if (modalDrawing && drawingClass) {
     const rect = modalCanvas.getBoundingClientRect();
     const sx = modalCanvas.width / rect.width;
@@ -4162,6 +4431,18 @@ async function modalDetect() {
   } else {
     setStatus('No detections');
   }
+}
+
+// every card of the current page, one after another (one model on the server); nothing is saved
+async function detectPage() {
+  if (!document.getElementById('model-path').value.trim()) { setStatus('Detect Page: set the model path (📂) first'); return; }
+  const start = currentPage * perPage, end = Math.min(start + perPage, images.length);
+  for (let i = start; i < end; i++) {
+    setStatus(`Detect Page: ${i - start + 1} / ${end - start}`);
+    await runGridDetection(i);
+    redrawGridCanvas(i);
+  }
+  setStatus(`Detect Page: ${end - start} cards done, unsaved (yellow) - check and Save Page`);
 }
 
 async function runGridDetection(index) {
@@ -4338,14 +4619,14 @@ function overlapShare(p, q) { // intersection / area of the smaller box, yolo xy
   return (ix * iy) / Math.max(1e-9, Math.min(p[3] * p[4], q[3] * q[4]));
 }
 
-function passesRules(boxes) { // boxes: array or null (no label file)
+function passesRules(boxes, path) { // boxes: array or null (no label file)
   return filterRules.every(r => {
     if (r.type === 'nofile') return boxes === null;
     const bx = boxes || [];
     if (r.type === 'broken') {
       const regions = bx.map(b => ({ class: classNames[b[0]], box: b.slice(1) }));
       const list = r.c === '' || r.c == null ? constraints.filter(c => c.on !== false && c.name) : [constraints[+r.c]].filter(Boolean);
-      return list.some(c => checkConstraint(c, regions) > 0);
+      return list.some(c => !isAcked(path, c) && checkConstraint(c, regions) > 0);
     }
     if (r.type === 'nolabels') return bx.length === 0;
     const A = bx.filter(b => String(b[0]) === String(r.a));
@@ -4389,7 +4670,7 @@ async function applyFilter() {
     statusEl.textContent = 'Reading labels…';
     statusEl.style.color = '#aaa';
     const boxes = await fetchLabelBoxes(allImages);
-    pool = allImages.filter(p => passesRules(boxes[p] === undefined ? null : boxes[p]));
+    pool = allImages.filter(p => passesRules(boxes[p] === undefined ? null : boxes[p], p));
     activeFilter = activeFilter.concat(filterRules.map(r => `rule:${r.type}`));
   }
 
@@ -4577,6 +4858,7 @@ document.addEventListener('keydown', e => {
   if (key === 'r') {
     e.preventDefault();
     if (modalOpen) modalDetect();
+    else if (e.shiftKey) detectPage();
     return;
   }
   

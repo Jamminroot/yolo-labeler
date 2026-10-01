@@ -1,6 +1,8 @@
 """YOLO Labeler - Universal labeling tool for YOLO datasets."""
 
-from http.server import HTTPServer, SimpleHTTPRequestHandler
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+import functools
+import threading
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 import json
@@ -329,6 +331,23 @@ def save_labels(
     return str(label_path)
 
 
+# requests run in threads (a grid loads dozens of images at once); the models are used by one request at a time
+_models_lock = threading.RLock()
+
+
+def serial(fn):
+    @functools.wraps(fn)
+    def run(*a, **k):
+        with _models_lock:
+            return fn(*a, **k)
+    return run
+
+
+class LabelerServer(ThreadingHTTPServer):
+    daemon_threads = True
+    request_queue_size = 256  # the default 5 refused the grid's parallel image requests
+
+
 def load_model(model_path: str):
     """Load YOLO model for auto-detection."""
     global _model, _model_path
@@ -342,6 +361,101 @@ def load_model(model_path: str):
     return None
 
 
+def train_imgsz(model) -> int:
+    """The size the model was trained at (detecting at another size costs accuracy)."""
+    try:
+        return int(model.ckpt["train_args"]["imgsz"])
+    except Exception:
+        return 640
+
+
+# ---- smart boxes: a point / stroke -> a box. Our own detector's low-confidence proposals first, SAM otherwise ----
+_sam = None          # ultralytics SAM predictor (MobileSAM), image features cached for _sam_path
+_sam_path = None
+_proposals = {}      # (image, model) -> [(cls_id, conf, x1, y1, x2, y2)] pixels, low confidence
+SAM_WEIGHTS = Path(__file__).resolve().parent / "mobile_sam.pt"
+
+
+def model_proposals(image_path: str, model_path: str, frame) -> list:
+    key = (image_path, model_path)
+    if key not in _proposals:
+        model = load_model(model_path)
+        out = []
+        if model is not None:
+            b = model.predict(frame, conf=0.05, imgsz=train_imgsz(model), verbose=False)[0].boxes
+            out = [(int(c), float(f), *xy) for c, f, xy in zip(b.cls.tolist(), b.conf.tolist(), b.xyxy.tolist())]
+        if len(_proposals) > 64:
+            _proposals.clear()
+        _proposals[key] = out
+    return _proposals[key]
+
+
+def sam_box(image_path: str, frame, pts, clip=None):
+    """Box of the SAM mask for these foreground points (one object); clip: only the mask inside this rectangle."""
+    global _sam, _sam_path
+    import numpy as np
+    if _sam is None:
+        from ultralytics.models.sam import Predictor as SAMPredictor
+        _sam = SAMPredictor(overrides=dict(conf=0.25, task="segment", mode="predict", imgsz=1024,
+                                           model=str(SAM_WEIGHTS), save=False, verbose=False))
+    if _sam_path != image_path:
+        _sam.set_image(frame)
+        _sam_path = image_path
+    r = _sam(points=[[list(p) for p in pts]], labels=[[1] * len(pts)])
+    if not r or r[0].masks is None or not len(r[0].masks.data):
+        return None
+    m = r[0].masks.data[0].cpu().numpy() > 0.5
+    if clip is not None:
+        H, W = m.shape
+        x1, y1, x2, y2 = (int(max(0, clip[0])), int(max(0, clip[1])), int(min(W, clip[2])), int(min(H, clip[3])))
+        c = np.zeros_like(m)
+        c[y1:y2, x1:x2] = m[y1:y2, x1:x2]
+        m = c
+    ys, xs = np.nonzero(m)
+    if not len(xs):
+        return None
+    return float(xs.min()), float(ys.min()), float(xs.max() + 1), float(ys.max() + 1)
+
+
+@serial
+def smart_box(image_path: str, points: list, cls_id, model_path: str, use_model: bool) -> dict:
+    """points: normalized [[x, y], ...] (one point = hover / click, several = a stroke over the object)."""
+    frame = cv2.imread(image_path)
+    if frame is None or not points:
+        return {}
+    H, W = frame.shape[:2]
+    pts = [(x * W, y * H) for x, y in points]
+    sx1, sy1 = min(p[0] for p in pts), min(p[1] for p in pts)
+    sx2, sy2 = max(p[0] for p in pts), max(p[1] for p in pts)
+    stroke = len(pts) > 1
+    # a stroke paints the object: the box hugs it - nothing beyond the stroke and a small margin (a brush edge)
+    m = 0.15 * max(sx2 - sx1, sy2 - sy1) + 4
+    near = (sx1 - m, sy1 - m, sx2 + m, sy2 + m)
+    within = lambda b, r: b[0] >= r[0] and b[1] >= r[1] and b[2] <= r[2] and b[3] <= r[3]
+    box, src, conf = None, None, 0.0
+    if use_model and model_path and cls_id is not None:
+        # a proposal of the wanted class holding (almost) every point; the most confident wins
+        inside = lambda b, p: b[0] <= p[0] <= b[2] and b[1] <= p[1] <= b[3]
+        cands = [c for c in model_proposals(image_path, model_path, frame)
+                 if c[0] == cls_id and sum(inside(c[2:], p) for p in pts) >= max(1, 0.8 * len(pts))
+                 and (not stroke or within(c[2:], near))]  # for a stroke: only a proposal that fits the stroke
+        if cands:
+            best = max(cands, key=lambda c: c[1])
+            box, src, conf = best[2:], "model", best[1]
+    if box is None:
+        box, src = sam_box(image_path, frame, pts, clip=near if stroke else None), "sam"
+        if stroke:  # never smaller than the stroke itself
+            box = (sx1, sy1, sx2, sy2) if box is None else \
+                (min(box[0], sx1), min(box[1], sy1), max(box[2], sx2), max(box[3], sy2))
+    if box is None:
+        return {}
+    if not stroke and (box[2] - box[0]) * (box[3] - box[1]) > 0.5 * W * H:
+        return {}  # one point grabbed the background (a tiny element on a flat table): no suggestion
+    x1, y1, x2, y2 = box
+    return {"box": [(x1 + x2) / 2 / W, (y1 + y2) / 2 / H, (x2 - x1) / W, (y2 - y1) / H], "source": src, "conf": conf}
+
+
+@serial
 def detect_regions(image_path: str, model_path: str, class_names: dict) -> list:
     """Run detection on image."""
     model = load_model(model_path)
@@ -353,7 +467,7 @@ def detect_regions(image_path: str, model_path: str, class_names: dict) -> list:
         return []
 
     h, w = frame.shape[:2]
-    results = model.predict(frame, conf=0.25, verbose=False)
+    results = model.predict(frame, conf=0.25, imgsz=train_imgsz(model), verbose=False)
 
     regions = []
     if results and len(results) > 0:
@@ -374,6 +488,11 @@ def detect_regions(image_path: str, model_path: str, class_names: dict) -> list:
 
 def get_progress_file(folder_path: str):
     return Path(folder_path).parent.parent / ".labeler_progress.json"
+
+
+def level_rules_file(dataset_base: str) -> Path:
+    """Constraints are shared by every dataset of a level: a file next to the datasets (their parent folder)."""
+    return Path(dataset_base).parent / ".labeler_constraints.json"
 
 
 def get_cache_file(dataset_base: str):
@@ -544,6 +663,19 @@ class YoloLabelHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({"regions": regions}).encode())
 
+        elif parsed.path == "/constraints":
+            f = level_rules_file(parse_qs(parsed.query).get("base", [""])[0])
+            rules = None
+            if f.exists():
+                try:
+                    rules = json.loads(f.read_text(encoding="utf-8"))
+                except (json.JSONDecodeError, OSError):
+                    pass
+            self.send_response(200)
+            self.send_header("Content-type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"constraints": rules, "file": str(f)}).encode())
+
         elif parsed.path == "/detect":
             qs = parse_qs(parsed.query)
             image_path = qs.get("path", [""])[0]
@@ -580,6 +712,33 @@ class YoloLabelHandler(SimpleHTTPRequestHandler):
             self.send_error(404)
 
     def do_POST(self):
+        if self.path == "/constraints":
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length))
+            level_rules_file(data["base"]).write_text(json.dumps(data.get("constraints") or [], indent=2, ensure_ascii=False),
+                                                      encoding="utf-8")
+            self.send_response(200)
+            self.send_header("Content-type", "application/json")
+            self.end_headers()
+            self.wfile.write(b'{"ok": true}')
+            return
+
+        if self.path == "/smart":
+            # {path, points: [[x, y], ...] normalized, cls_id, model, use_model} -> {box, source, conf} | {}
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length))
+            try:
+                out = smart_box(data["path"], data.get("points") or [], data.get("cls_id"), data.get("model") or "",
+                                bool(data.get("use_model", True)))
+            except Exception as e:  # never kill the server over a helper
+                print("smart box failed:", e)
+                out = {"error": str(e)}
+            self.send_response(200)
+            self.send_header("Content-type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(out).encode())
+            return
+
         if self.path == "/label_boxes":
             # {images:[...], dataset_base, structure} -> {path: [[cls,x,y,w,h], ...] | null (no label file)}
             length = int(self.headers.get("Content-Length", 0))
@@ -1103,7 +1262,7 @@ def main():
     import webbrowser
 
     port = 8770
-    server = HTTPServer(("localhost", port), YoloLabelHandler)
+    server = LabelerServer(("localhost", port), YoloLabelHandler)
     print(f"YOLO Labeler running at http://localhost:{port}")
     print("Press Ctrl+C to stop")
     webbrowser.open(f"http://localhost:{port}")
