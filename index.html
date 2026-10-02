@@ -218,23 +218,25 @@ body.no-sidebar #sidebar { display: none; }
 <div id="help-pop" onclick="event.stopPropagation()">
   <b>Shortcuts</b><br>
   Hotkey → Draw class<br>
-  Alt+Hotkey → Change class<br>
+  Alt+Hotkey → Change class · Alt+wheel → step through classes<br>
   Ctrl+Drag → Clone region<br>
   Shift+Drag → Lock H/V axis<br>
-  R → Run detection (modal) · Shift+R → Detect Page<br>
-  Del → Delete region<br>
+  Detect / Detect Page → buttons<br>
+  Del / middle mouse button → Delete the selected region<br>
+  F1 → translate tool: drag over text → OCR + English translation (offline); F1 / Esc cancels<br>
   Arrows → Move region 1px<br>
   Shift+Arrows → Move 5px<br>
-  E/Enter → Expand image<br>
-  Space → Save page &amp; next<br>
+  Enter → Expand image<br>
+
   PgUp/PgDn → Navigate pages<br>
-  M → Toggle mark mode<br>
+  Mark mode → Mark button<br>
   Esc → Exit mark mode / close popup<br>
   Click (no drag) on the selected box → select the next box under the cursor<br>
   D column (classes) → Detect replaces only checked classes<br>
   Click a constraint pill → accept it for that image (a legit case): faded, ignored by the filter and counters<br>
-  ✨ smart boxes + a class selected → dashed suggestion under the cursor, click takes it; stroke over an object → its box<br>
-  ` / ~ → Toggle constraint violations on the card under the cursor<br>
+  ✨ smart boxes + a class selected → dashed suggestion under the cursor, click takes it; stroke over an object → its box (boxes of that class the stroke crosses are replaced)<br>
+  ` / ~ → Zoom cursor on / off<br>
+  hold Tab → constraint violations on the card under the cursor · Shift+Tab → keep them on / off<br>
   <br><b>Constraints</b> (sidebar, under classes): a broken rule shows as a pill next to the card's file name.
   Classes: comma-separated, empty or * = any.<br>
   count: number of A boxes within min..max<br>
@@ -313,6 +315,10 @@ body.no-sidebar #sidebar { display: none; }
     </select></label>
   <label style="font-size:11px;margin-left:6px;" title="Brightness of the overlap highlight">glow <input type="range" id="overlap-bright" min="0" max="100" value="100" style="width:70px;vertical-align:middle;" oninput="redrawOverlaps()" onchange="saveSettings()"></label>
   </div>
+  <div class="setting-group">
+    <label title="The 8 squares on a selected box's corners and sides. Hidden, they still work: grab a corner / side as before"><input type="checkbox" id="show-handles" onchange="saveSettings(); redrawAllGridCanvases(); if (modalOpen) renderModal();"> Resize handles</label>
+    <input type="range" id="handle-size" min="3" max="14" value="8" title="Handle size" style="width:60px;vertical-align:middle;" oninput="redrawAllGridCanvases(); if (modalOpen) renderModal();" onchange="saveSettings()">
+  </div>
   <button class="btn btn-secondary btn-sm" onclick="openHotkeyEditor()">Edit Hotkeys</button>
 </div>
 
@@ -350,15 +356,16 @@ body.no-sidebar #sidebar { display: none; }
     <button class="btn btn-secondary btn-sm" onclick="lastPage()">»»</button>
   </div>
   <button class="btn btn-sm btn-secondary" onclick="detectPage()" title="Shift+R: run the model on every card of the page (only classes checked in column D); results stay unsaved until Save Page">Detect Page</button>
-  <button class="btn btn-sm" onclick="saveAllOnPage()" title="Space: save page &amp; next">Save Page</button>
+  <button class="btn btn-sm" onclick="saveAllOnPage()" title="Save every card of this page">Save Page</button>
     </div>
     <h3>Classes (click key to edit)</h3>
     <div id="class-buttons"></div>
     <button id="add-class-btn" class="btn btn-sm" onclick="showAddClassPrompt()" style="width:100%;margin:8px 0;">+ Add Class</button>
     <label style="font-size:11px;" title="With a class selected: the box under the cursor is suggested (dashed) - click takes it; a stroke over the object makes its box. Our model's proposals of that class first, SAM otherwise"><input type="checkbox" id="smart-mode" onchange="smartChanged()"> ✨ smart boxes</label>
     <label style="font-size:11px;" title="Suggest the model's low-confidence boxes of the selected class before SAM (needs Model path)"><input type="checkbox" id="smart-model" checked onchange="saveSettings()"> model hints first</label>
+    <label style="font-size:11px;" title="A smart-box stroke replaces the boxes of the same class it crosses (60%+ of their width or height): a fan of slivers becomes one box"><input type="checkbox" id="smart-overwrite" checked onchange="saveSettings()"> Overwrite with smart box draw</label>
     <h3 style="margin-top:6px" id="constraints-title" title="Shared by every dataset of this level">Constraints</h3>
-    <label style="font-size:11px;" title="Outline the boxes breaking any enabled rule on the card under the cursor (hotkey ` / ~)"><input type="checkbox" id="show-violations" onchange="setAllConstraints(this.checked); this.blur()"> highlight violations <span style="color:#777">(`)</span></label>
+    <label style="font-size:11px;" title="Outline the boxes breaking any enabled rule on the card under the cursor (hold Tab; Shift+Tab keeps it on)"><input type="checkbox" id="show-violations" onchange="violationsToggled = this.checked; setAllConstraints(this.checked); this.blur()"> highlight violations <span style="color:#777">(Tab)</span></label>
     <label style="font-size:11px;" title="Filter: frames breaking any enabled constraint (the counter on a rule filters by that rule)"><input type="checkbox" id="only-broken" onchange="filterBroken(this.checked ? '' : null)"> only frames breaking a rule</label>
     <datalist id="constraint-classes"></datalist>
     <div id="constraints"></div>
@@ -804,6 +811,31 @@ function updateGridItemUnsavedState(index) {
   }
 }
 
+// column C: from each count tag under the card, thin lines up to every box of that class (1 screen px)
+function drawCountLeaders(item, canvas, ctx, regions, coords) {
+  const tags = item.querySelectorAll('.grid-item-counts .tag');
+  if (!tags.length) return;
+  const cr = canvas.getBoundingClientRect();
+  if (!cr.width) return;
+  const k = canvas.width / cr.width;  // canvas pixels per screen pixel
+  ctx.save();
+  ctx.lineWidth = k;
+  for (const tag of tags) {
+    const tr = tag.getBoundingClientRect();
+    const sx = (tr.left + tr.width / 2 - cr.left) * k, sy = canvas.height;  // straight below the image: the tag
+    ctx.strokeStyle = ctx.fillStyle = colors[tag.dataset.cls] || '#888';
+    for (const r of regions) {
+      if (r.class !== tag.dataset.cls) continue;
+      const bx = coords.x + r.box[0] * coords.w, by = coords.y + r.box[1] * coords.h;
+      ctx.globalAlpha = 0.75;
+      ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(bx, by); ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.beginPath(); ctx.arc(bx, by, 2 * k, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
 function updateGridItemCounts(index) {
   const item = document.querySelector(`.grid-item[data-index="${index}"]`);
   if (!item) return;
@@ -841,8 +873,10 @@ function updateGridItemCounts(index) {
     tag.style.background = color;
     tag.style.color = textColor;
     tag.textContent = `${cls}: ${count}`;
+    tag.dataset.cls = cls;
     countsDiv.appendChild(tag);
   }
+  redrawGridCanvas(index);  // the leaders start at the tags: draw once they exist
 }
 
 async function loadDataset() {
@@ -986,8 +1020,8 @@ function hotkeyOf(e) {
   if (m) return (e.shiftKey ? '⇧' : '') + (m[1] || m[2] || m[3]).toLowerCase(); // Shift+letter/digit is its own hotkey
   return e.shiftKey ? '' : e.key.toLowerCase(); // other keys only unshifted
 }
-// e r z m, space are taken by built-in shortcuts
-const HOTKEY_CHARS = '1234567890qwtyuiopasdfghjklxcvbn';
+// letters and digits are all free for classes (built-ins use Space, Enter, Del, arrows, PgUp/PgDn, `, Tab)
+const HOTKEY_CHARS = '1234567890qwertyuiopasdfghjklzxcvbnm';
 
 function loadHotkeys() {
   let saved = null, global = {};
@@ -1436,6 +1470,9 @@ function setConstraintFocus(rule, regions = null) {
 // ` / ~ toggles: offenders of every enabled rule, each in its colour, on the card under the cursor
 // (the open image in the modal; every card when the cursor is on none). A hovered rule still shows alone.
 let showAllConstraints = false, hoveredCard = -1;
+let violationsToggled = false;  // Shift+Tab / the checkbox; a held Tab shows them on top of this
+document.addEventListener('keyup', e => { if (e.key === 'Tab' && !violationsToggled) setAllConstraints(false); });
+window.addEventListener('blur', () => { if (!violationsToggled) setAllConstraints(false); });
 function setAllConstraints(on) {
   if (showAllConstraints === on) return;
   showAllConstraints = on;
@@ -1667,10 +1704,15 @@ async function smartHover(path, regions, pt, redraw) {
     if (smart.stroke) continue;  // a stroke started meanwhile: no suggestion over it
     smart.preview = box; smart.path = job.path; smart.regions = job.regions;
     job.redraw();
+    refreshZoom();  // the suggestion arrives after the mouse move that drew the zoom
   }
   smart.busy = false;
 }
-function smartClear(redraw) { if (smart.preview || smart.stroke) { smart.preview = null; smart.stroke = null; redraw(); } }
+function smartClear(redraw) { if (smart.preview || smart.stroke) { smart.preview = null; smart.stroke = null; redraw(); refreshZoom(); } }
+function refreshZoom() {
+  if (!lastZoomEvent || zoomWindow.style.display !== 'block') return;
+  if (lastZoomIndex >= 0) updateZoomWindow(lastZoomEvent, lastZoomIndex); else updateModalZoomWindow(lastZoomEvent);
+}
 function drawSmart(ctx, regions, ox, oy, iw, ih, lineScale) {
   if (!smartActive() || smart.regions !== regions) return;
   lineScale = 1;  // thin at any zoom: the suggestion must not hide what it outlines
@@ -1704,13 +1746,37 @@ async function smartFinish(e, path, add) {
     box = await smartRequest(path, click ? [pts[0]] : pts.filter((_, i) => i % step === 0));
   }
   smart.preview = null;
-  if (box && box[2] > 0 && box[3] > 0) add(box); else setStatus('Smart box: nothing found here');
+  if (box && box[2] > 0 && box[3] > 0) add(box, click ? [] : pts); else setStatus('Smart box: nothing found here');
 }
 function smartNewRegion(box) {
   const classId = Object.entries(classNames).find(([k, v]) => v === drawingClass)?.[0];
   return { class: drawingClass, class_id: classId ? parseInt(classId) : -1, box: [...box] };
 }
-function smartAddGrid(index, box) {
+// a stroke drawn across boxes of the class being drawn replaces them (a fan of slivers -> one box): a box is crossed
+// when the stroke's points inside it span 60%+ of its width or of its height
+function strokeReplaces(regions, pts) {
+  if (!pts || pts.length < 2 || !document.getElementById('smart-overwrite').checked) return 0;
+  const dense = [pts[0]];  // the mouse samples sparsely: a thin sliver may sit between two samples
+  for (let i = 1; i < pts.length; i++) {
+    const [ax, ay] = pts[i - 1], [bx, by] = pts[i], k = Math.max(1, Math.ceil(Math.hypot(bx - ax, by - ay) / 0.002));
+    for (let t = 1; t <= k; t++) dense.push([ax + (bx - ax) * t / k, ay + (by - ay) * t / k]);
+  }
+  pts = dense;
+  let n = 0;
+  for (let i = regions.length - 1; i >= 0; i--) {
+    const r = regions[i];
+    if (r.class !== drawingClass) continue;
+    const [cx, cy, w, h] = r.box;
+    const inside = pts.filter(([x, y]) => Math.abs(x - cx) <= w / 2 && Math.abs(y - cy) <= h / 2);
+    if (inside.length < 2) continue;
+    const xs = inside.map(p => p[0]), ys = inside.map(p => p[1]);
+    if ((Math.max(...xs) - Math.min(...xs)) >= 0.6 * w || (Math.max(...ys) - Math.min(...ys)) >= 0.6 * h) { regions.splice(i, 1); n++; }
+  }
+  if (n) setStatus(`Stroke replaced ${n} ${drawingClass} box(es)`);
+  return n;
+}
+function smartAddGrid(index, box, pts) {
+  strokeReplaces(gridEditRegions, pts);
   gridEditRegions.push(smartNewRegion(box));
   gridEditSelectedIdx = gridEditRegions.length - 1;
   const path = images[index];
@@ -1720,7 +1786,8 @@ function smartAddGrid(index, box) {
   redrawGridCanvas(index);
   refreshZoomWindow();
 }
-function smartAddModal(box) {
+function smartAddModal(box, pts) {
+  strokeReplaces(modalRegions, pts);
   modalRegions.push(smartNewRegion(box));
   modalSelectedIdx = modalRegions.length - 1;
   renderModalRegionsList();
@@ -1896,6 +1963,8 @@ async function loadLabelCache() {
       if (s.overlapBright !== undefined) document.getElementById('overlap-bright').value = s.overlapBright;
       if (s.labelsOnHover !== undefined) document.getElementById('labels-on-hover').checked = s.labelsOnHover;
       if (s.dimOthers !== undefined) document.getElementById('dim-others').checked = s.dimOthers;
+      if (s.showHandles !== undefined) document.getElementById('show-handles').checked = s.showHandles;
+      if (s.handleSize !== undefined) document.getElementById('handle-size').value = s.handleSize;
       if (s.dimRadius !== undefined) document.getElementById('dim-radius').value = s.dimRadius;
       if (s.hiddenTintClasses && Array.isArray(s.hiddenTintClasses)) {
         hiddenTintClasses = new Set(s.hiddenTintClasses);
@@ -1904,6 +1973,7 @@ async function loadLabelCache() {
       constraintAcks = (labelCache.settings || {}).constraintAcks || {};
       if (s.smartMode !== undefined) document.getElementById('smart-mode').checked = s.smartMode;
       if (s.smartModel !== undefined) document.getElementById('smart-model').checked = s.smartModel;
+      if (s.smartOverwrite !== undefined) document.getElementById('smart-overwrite').checked = s.smartOverwrite;
       if (s.ignoreOverlapClasses && Array.isArray(s.ignoreOverlapClasses)) {
         ignoreOverlapClasses = new Set(s.ignoreOverlapClasses);
       }
@@ -1967,12 +2037,15 @@ async function saveSettings() {
     overlapBright: document.getElementById('overlap-bright').value,
     labelsOnHover: document.getElementById('labels-on-hover').checked,
     dimOthers: document.getElementById('dim-others').checked,
+    showHandles: document.getElementById('show-handles').checked,
+    handleSize: document.getElementById('handle-size').value,
     dimRadius: document.getElementById('dim-radius').value,
     ignoreOverlapClasses: Array.from(ignoreOverlapClasses),
     noDetectClasses: Array.from(noDetectClasses),
     smartMode: document.getElementById('smart-mode').checked,
     constraintAcks: constraintAcks,
     smartModel: document.getElementById('smart-model').checked,
+    smartOverwrite: document.getElementById('smart-overwrite').checked,
     gridCols: document.getElementById('grid-cols').value,
     fullWidthMode: document.getElementById('full-width-mode').checked,
     mosaicMode: document.getElementById('mosaic-mode').checked,
@@ -2200,7 +2273,7 @@ function createGridItem(index, w, h, fullWidthMode = false) {
     const next = takeClickCycle(e);
     if (next >= 0 && editInGrid && gridEditIndex === index) { gridEditSelectedIdx = next; redrawGridCanvas(index); refreshZoomWindow(); }
   });
-  canvas.addEventListener('mouseleave', () => { if (!smart.stroke) smartClear(() => redrawGridCanvas(index)); });
+  canvas.addEventListener('mouseleave', () => { if (labelCursor && labelCursor.canvas === canvas) labelCursor = null; if (!smart.stroke) smartClear(() => redrawGridCanvas(index)); });
   canvas.addEventListener('mouseleave', (e) => { if (!gridZoomActive()) hideZoomWindow(e.target); else e.target.style.cursor = ''; if (setHover(null, -1)) redrawGridCanvas(index); });
   canvas.addEventListener('mousemove', (e) => {
     const cached = imageCache[images[index]];
@@ -2210,6 +2283,7 @@ function createGridItem(index, w, h, fullWidthMode = false) {
     const rect = canvas.getBoundingClientRect();
     const mx = (e.clientX - rect.left) * canvas.width / rect.width, my = (e.clientY - rect.top) * canvas.height / rect.height;
     if (setHover(regions, regionAt(regions, mx, my, coords.x, coords.y, coords.w, coords.h))) redrawGridCanvas(index);
+    cursorMoved(canvas, mx, my, () => redrawGridCanvas(index));
   });
   imageWrapper.appendChild(canvas);
   
@@ -2768,20 +2842,6 @@ function renderModalCanvas() {
 
 function drawRegions(ctx, regions, ox, oy, iw, ih, showHandles, selectedIdx = -1, lineScale = 1) {
   drawRegionsBase(ctx, regions, ox, oy, iw, ih, showHandles, selectedIdx, lineScale);
-  if (selectedIdx >= 0 && regions[selectedIdx]) {  // black halo + moving white dashes: visible on any background
-    const b = regions[selectedIdx].box, pad = 2 * lineScale;
-    const x = ox + (b[0] - b[2] / 2) * iw - pad, y = oy + (b[1] - b[3] / 2) * ih - pad;
-    const w = b[2] * iw + 2 * pad, h = b[3] * ih + 2 * pad;
-    ctx.save();
-    ctx.globalAlpha = 1;
-    ctx.strokeStyle = '#000'; ctx.lineWidth = 3.5 * lineScale; ctx.strokeRect(x, y, w, h);
-    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.5 * lineScale;
-    ctx.setLineDash([5 * lineScale, 4 * lineScale]); ctx.lineDashOffset = -animationPhase * 3 * lineScale;
-    ctx.strokeRect(x, y, w, h);
-    ctx.restore();
-    lastDrawAnimated = true;
-    if (!animationRunning) startAnimation();
-  }
   if (overlapAreaMode()) drawOverlapAreas(ctx, findOverlapRects(regions), ox, oy, iw, ih, lineScale);
   drawSmart(ctx, regions, ox, oy, iw, ih, lineScale);
   if (drawConstraintFocus(ctx, regions, ox, oy, iw, ih, lineScale)) {
@@ -2955,8 +3015,8 @@ function drawRegionsBase(ctx, regions, ox, oy, iw, ih, showHandles, selectedIdx 
                        selected: i === selectedIdx, hovered: isHovered(regions, i), color, am });
     
     // Handles for selected
-    if (showHandles && i === selectedIdx) {
-      const hs = HANDLE_SIZE / lineScale;
+    if (showHandles && i === selectedIdx && document.getElementById('show-handles')?.checked) {  // grabbing works either way
+      const hs = (parseFloat(document.getElementById('handle-size')?.value) || HANDLE_SIZE) / lineScale;
       ctx.fillStyle = '#fff';
       ctx.strokeStyle = '#000';
       ctx.lineWidth = 1 / lineScale;
@@ -3023,6 +3083,26 @@ function modalLabelView() {
                   (Math.min(cr.right, pr.right) - cr.left) * k, (Math.min(cr.bottom, pr.bottom) - cr.top) * k], scale: k };
 }
 
+// the mouse: no label is ever placed over it (labels step aside; their leader line still points at the box)
+let labelCursor = null;  // {canvas, x, y} in that canvas' pixels
+const CURSOR_FREE = 16;  // screen px kept free around the cursor
+function cursorRect(canvas, fs) {
+  const r = CURSOR_FREE * fs;
+  if (typeof zoomCanvas !== 'undefined' && canvas === zoomCanvas)  // the zoom is centred on the cursor
+    return [canvas.width / 2 - r, canvas.height / 2 - r, canvas.width / 2 + r, canvas.height / 2 + r];
+  return labelCursor && labelCursor.canvas === canvas ? [labelCursor.x - r, labelCursor.y - r, labelCursor.x + r, labelCursor.y + r] : null;
+}
+// redraw a canvas only when the cursor moved onto one of its labels (labels then move away from it)
+const cursorRedraws = new Map();
+function cursorMoved(canvas, x, y, redraw) {
+  labelCursor = { canvas, x, y };
+  const k = canvas.width / Math.max(1, canvas.getBoundingClientRect().width);
+  const r = CURSOR_FREE * k;
+  const hit = (canvas._labelRects || []).some(L => L[0] < x + r && L[2] > x - r && L[1] < y + r && L[3] > y - r);
+  if (!hit || cursorRedraws.has(canvas)) return;
+  cursorRedraws.set(canvas, requestAnimationFrame(() => { cursorRedraws.delete(canvas); redraw(); }));
+}
+
 function placeLabels(ctx, jobs, ox0, oy0, iw0, ih0, lineScale = 1) {
   // labels live inside the VISIBLE part of the image, at a constant on-screen size
   const vr = labelView ? labelView.rect : [ox0, oy0, ox0 + iw0, oy0 + ih0];
@@ -3031,6 +3111,7 @@ function placeLabels(ctx, jobs, ox0, oy0, iw0, ih0, lineScale = 1) {
   const fs = (labelView ? labelView.scale : 1) / lineScale;
   const boxes = jobs.map(j => [j.rx, j.ry, j.rx + j.rw, j.ry + j.rh]);
   const placed = [];
+  const cur = cursorRect(ctx.canvas, fs);
   const area = (L, R) => Math.max(0, Math.min(L[2], R[2]) - Math.max(L[0], R[0])) * Math.max(0, Math.min(L[3], R[3]) - Math.max(L[1], R[1]));
   // selected / hovered labels last (drawn on top); otherwise small boxes first - they have the fewest free spots
   const order = jobs.map((j, k) => k).sort((a, b) =>
@@ -3056,8 +3137,9 @@ function placeLabels(ctx, jobs, ox0, oy0, iw0, ih0, lineScale = 1) {
     cands.push([j.rx, j.ry], [j.rx + j.rw - lw, j.ry + j.rh - lh]);  // last resort: inside its own box
     if (j.hovered) {  // hovered: ALWAYS right next to its box (ring 0), placement rules ignored; drawn on top
       const inImg = ([x, y]) => x >= ox && y >= oy && x + lw <= ox + iw && y + lh <= oy + ih;
-      const ring0 = cands.slice(0, 16);
-      const spot0 = ring0.find(inImg) || clamp(ring0[0]);
+      const ring0 = cands.slice(0, 16), ring1 = cands.slice(0, 48);
+      const free = c => !cur || !(c[0] < cur[2] && c[0] + lw > cur[0] && c[1] < cur[3] && c[1] + lh > cur[1]);
+      const spot0 = ring0.find(c => inImg(c) && free(c)) || ring1.find(c => inImg(c) && free(c)) || ring0.find(inImg) || clamp(ring0[0]);
       cands.length = 0;
       cands.push(spot0);
     }
@@ -3070,24 +3152,43 @@ function placeLabels(ctx, jobs, ox0, oy0, iw0, ih0, lineScale = 1) {
       if (labelHit * 1e6 >= bestCost) continue;
       let boxHit = 0;
       for (const R of boxes) boxHit += area(L, R);
-      const cost = labelHit * 1e6 + boxHit * 10 + n;  // label overlap >> covered content >> distance
+      const cursorHit = cur ? area(L, cur) : 0;
+      const cost = cursorHit * 1e9 + labelHit * 1e6 + boxHit * 10 + n;  // the cursor >> label overlap >> covered content >> distance
       if (cost < bestCost) { bestCost = cost; best = [x, y]; }
-      if (labelHit === 0 && boxHit === 0) break;
+      if (labelHit === 0 && boxHit === 0 && cursorHit === 0) break;
     }
     const spot = best;
     const [lx, ly] = spot;
     placed.push([lx, ly, lx + lw, ly + lh]);
+    ctx.canvas._labelRects = placed;
     // background = the box colour (unknown class: red); text black or white, whichever reads on it
     ctx.globalAlpha = j.am ?? 1;
-    const bg = j.unknown ? '#ff0000' : toHex(j.color || colors[j.label] || '#888888');
+    const boxColor = j.unknown ? '#ff0000' : toHex(j.color || colors[j.label] || '#888888');
+    {  // a thin leader label -> centre of its box (1 screen px at any zoom): a label touching several boxes still points at its own
+      const px = j.rx + j.rw / 2, py = j.ry + j.rh / 2;
+      const qx = Math.max(lx, Math.min(px, lx + lw)), qy = Math.max(ly, Math.min(py, ly + lh));
+      ctx.save();  // fs = drawing units per screen pixel: the canvas is shown scaled, the zoom draws magnified
+      ctx.strokeStyle = ctx.fillStyle = boxColor; ctx.lineWidth = fs; ctx.globalAlpha = 0.9 * (j.am ?? 1);
+      ctx.beginPath(); ctx.moveTo(qx, qy); ctx.lineTo(px, py); ctx.stroke();
+      ctx.beginPath(); ctx.arc(px, py, 2 * fs, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
+    // the selected box's label is inverted - white plate, black text, a frame in the box colour - so it never looks
+    // like a hovered or a plain one (those keep the box colour as background)
+    const bg = j.selected ? '#ffffff' : boxColor;
+    ctx.globalAlpha = j.selected ? 1 : (j.am ?? 1);
     ctx.fillStyle = bg;
     ctx.fillRect(lx, ly, lw, lh);
-    if (big || j.hasOverlap) {  // hovered / selected / overlapping: white frame so it stands out among same colours
+    if (j.selected) {
+      ctx.strokeStyle = boxColor;
+      ctx.lineWidth = 2 * fs;
+      ctx.strokeRect(lx + fs, ly + fs, lw - 2 * fs, lh - 2 * fs);
+    } else if (big || j.hasOverlap) {  // hovered / overlapping: white frame so it stands out among same colours
       ctx.strokeStyle = '#ffffff';
       ctx.lineWidth = fs;
       ctx.strokeRect(lx + fs / 2, ly + fs / 2, lw - fs, lh - fs);
     }
-    ctx.fillStyle = readableOn(bg);
+    ctx.fillStyle = j.selected ? '#000000' : readableOn(bg);
     ctx.fillText(j.label, lx + (big ? 4 : 2) * fs, ly + (big ? 12 : 9) * fs);
     ctx.globalAlpha = 1;
   }
@@ -3175,10 +3276,17 @@ function selectItem(index) {
 }
 
 // Alt+drag: a box is split 3x3; corner zones drag that corner, edge zones that edge, the centre moves the box
+// Alt+drag on a box: only its inner 10% (each side, at least 6 px) moves it; everywhere else resizes toward the nearest
+// side (corners: both), so a small box is easy to grab by an edge
 function altZoneMode(mx, my, rx, ry, rw, rh) {
-  const col = Math.min(2, Math.max(0, Math.floor((mx - rx) / (rw / 3))));
-  const row = Math.min(2, Math.max(0, Math.floor((my - ry) / (rh / 3))));
-  return [['nw', 'n', 'ne'], ['w', 'move', 'e'], ['sw', 's', 'se']][row][col];
+  const dx = (mx - rx) / Math.max(rw, 1) - 0.5, dy = (my - ry) / Math.max(rh, 1) - 0.5;
+  const cx = Math.max(0.05, 3 / Math.max(rw, 1)), cy = Math.max(0.05, 3 / Math.max(rh, 1));
+  if (Math.abs(dx) <= cx && Math.abs(dy) <= cy) return 'move';
+  let h = Math.abs(dx) > 1 / 6 ? (dx < 0 ? 'w' : 'e') : '', v = Math.abs(dy) > 1 / 6 ? (dy < 0 ? 'n' : 's') : '';
+  if (!h && !v) {  // the middle band: the side it leans to
+    if (Math.abs(dx) / Math.max(cx, 1e-6) > Math.abs(dy) / Math.max(cy, 1e-6)) h = dx < 0 ? 'w' : 'e'; else v = dy < 0 ? 'n' : 's';
+  }
+  return v + h;
 }
 const ALT_CURSORS = { nw: 'nwse-resize', se: 'nwse-resize', ne: 'nesw-resize', sw: 'nesw-resize',
                       n: 'ns-resize', s: 'ns-resize', w: 'ew-resize', e: 'ew-resize', move: 'move' };
@@ -3392,7 +3500,7 @@ function gridMouseUp(e, index) {
   if (e.button === 2) return;
   if (!editInGrid || gridEditIndex !== index) return;
   if (smart.stroke && smart.strokeAt === index) {
-    smartFinish(e, images[index], box => smartAddGrid(index, box));
+    smartFinish(e, images[index], (box, pts) => smartAddGrid(index, box, pts));
     return;
   }
   
@@ -3522,6 +3630,7 @@ function redrawGridCanvas(index) {
   drawRegions(ctx, regions, coords.x, coords.y, coords.w, coords.h, isEditing, selectedIdx);
   if (lastDrawAnimated) animatedGridItems.add(index); else animatedGridItems.delete(index);
   updateConstraintPills(index, regions);
+  drawCountLeaders(item, canvas, ctx, regions, coords);
 
   // Draw clone preview (only for edited item)
   if (isEditing && gridClonePreview) {
@@ -4240,6 +4349,7 @@ modalCanvas.addEventListener('mousemove', e => {
     const rect = modalCanvas.getBoundingClientRect();
     const mx = (e.clientX - rect.left) * modalCanvas.width / rect.width, my = (e.clientY - rect.top) * modalCanvas.height / rect.height;
     if (setHover(modalRegions, regionAt(modalRegions, mx, my, 0, 0, modalCanvas.width, modalCanvas.height))) renderModal();
+    cursorMoved(modalCanvas, mx, my, () => renderModal());
     if (smartActive()) {
       const n = [mx / modalCanvas.width, my / modalCanvas.height];
       if (smart.stroke && smart.strokeAt === 'modal') { smart.stroke.push(n); smartMoved(e); renderModal(); return; }
@@ -4345,7 +4455,7 @@ modalCanvas.addEventListener('mouseleave', () => {
 modalCanvas.addEventListener('mouseup', e => {
   if (e.button === 2) return;
   if (smart.stroke && smart.strokeAt === 'modal') {
-    smartFinish(e, images[modalIndex], box => smartAddModal(box));
+    smartFinish(e, images[modalIndex], (box, pts) => smartAddModal(box, pts));
     return;
   }
   if (modalDrawing && drawingClass) {
@@ -4772,6 +4882,22 @@ async function saveAndNextPage() {
 }
 
 // Change class of selected region
+// Alt + mouse wheel: the selected box's class steps through the class list (no selection: the drawing class does)
+document.addEventListener('wheel', e => {
+  if (!e.altKey || !Object.keys(classNames).length) return;
+  e.preventDefault();
+  const list = Object.keys(classNames).map(Number).sort((a, b) => a - b).map(k => classNames[k]);
+  const step = e.deltaY > 0 ? 1 : -1;
+  const sel = modalOpen && modalSelectedIdx >= 0 ? modalRegions[modalSelectedIdx]
+            : editInGrid && gridEditSelectedIdx >= 0 ? gridEditRegions[gridEditSelectedIdx] : null;
+  const cur = sel ? sel.class : drawingClass;
+  const i = list.indexOf(cur);
+  const next = list[((i < 0 ? (step > 0 ? -1 : 0) : i) + step + list.length) % list.length];
+  if (sel) changeSelectedClass(next);
+  else { drawingClass = next; updateModeIndicator(); if (modalOpen) renderModal(); }
+  setStatus(`${sel ? 'Box class' : 'Drawing class'}: ${next}`);
+}, { passive: false });
+
 function changeSelectedClass(newClass) {
   if (modalOpen && modalSelectedIdx >= 0) {
     const classId = Object.entries(classNames).find(([k, v]) => v === newClass)?.[0];
@@ -4796,9 +4922,26 @@ function changeSelectedClass(newClass) {
 // Keyboard
 document.addEventListener('keydown', e => {
   if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT') return;
-  if (e.code === 'Backquote' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+  if (e.code === 'Backquote' && !e.ctrlKey && !e.altKey && !e.metaKey) {  // ` / ~: zoom on / off
     e.preventDefault();
-    if (!e.repeat) setAllConstraints(!showAllConstraints);
+    if (!e.repeat) {
+      const z = document.getElementById('enable-zoom');
+      z.checked = !z.checked;
+      saveSettings();
+      setStatus('Zoom cursor: ' + (z.checked ? 'on' : 'off'));
+    }
+    return;
+  }
+  if (e.key === 'F1') {  // translate tool (OCR a dragged area) - the browser's help stays shut
+    e.preventDefault();
+    ocrSelected();
+    return;
+  }
+  if (e.key === 'Tab' && !e.ctrlKey && !e.altKey && !e.metaKey) {  // Tab held: rule violations; Shift+Tab: on / off
+    e.preventDefault();
+    if (e.repeat) return;
+    if (e.shiftKey) { violationsToggled = !violationsToggled; setAllConstraints(violationsToggled); }
+    else if (!violationsToggled) setAllConstraints(true);
     return;
   }
   if (e.key === 'Escape' && POPS.some(p => document.getElementById(p).classList.contains('visible'))) {
@@ -4829,36 +4972,9 @@ document.addEventListener('keydown', e => {
     return;
   }
 
-  if (key === 'm' && !e.ctrlKey && !e.altKey && !modalOpen && !editInGrid) {
-    e.preventDefault();
-    toggleMarkMode();
-    return;
-  }
 
   if (e.key === 'Delete' || e.key === 'Backspace') {
-    if (modalOpen && modalSelectedIdx >= 0) {
-      modalRegions.splice(modalSelectedIdx, 1);
-      modalSelectedIdx = -1;
-      const path = images[modalIndex];
-      imageCache[path].regions = JSON.parse(JSON.stringify(modalRegions));
-      scheduleAutoSave(path, modalRegions);
-      renderModal();
-      renderModalRegionsList();
-    } else if (editInGrid && gridEditSelectedIdx >= 0) {
-      gridEditRegions.splice(gridEditSelectedIdx, 1);
-      gridEditSelectedIdx = -1;
-      const path = images[gridEditIndex];
-      imageCache[path].regions = JSON.parse(JSON.stringify(gridEditRegions));
-      scheduleAutoSave(path, gridEditRegions);
-      redrawGridCanvas(gridEditIndex);
-    }
-    return;
-  }
-  
-  if (key === 'r') {
-    e.preventDefault();
-    if (modalOpen) modalDetect();
-    else if (e.shiftKey) detectPage();
+    deleteSelectedRegion();
     return;
   }
   
@@ -4907,13 +5023,12 @@ document.addEventListener('keydown', e => {
     return;
   }
   
-  if (key === ' ') {
+  if (key === ' ') {  // no page turn on Space (Save Page is a button); the browser does not scroll either
     e.preventDefault();
-    saveAndNextPage();
     return;
   }
   
-  if (e.key === 'Enter' || key === 'e') {
+  if (e.key === 'Enter') {
     e.preventDefault();
     if (!modalOpen && selectedIndex >= 0) openModal(selectedIndex);
     return;
@@ -4922,13 +5037,6 @@ document.addEventListener('keydown', e => {
   if (e.key === 'PageUp') { e.preventDefault(); prevPage(); return; }
   if (e.key === 'PageDown') { e.preventDefault(); nextPage(); return; }
 
-  if (key === 'z') {
-    e.preventDefault();
-    const zoomCheckbox = document.getElementById('enable-zoom');
-    zoomCheckbox.checked = !zoomCheckbox.checked;
-    saveSettings();
-    return;
-  }
 
   // Hotkey (Shift included in hk) draws (Alt+hotkey = change class, handled above)
   if (hotkeys[hk] && !e.ctrlKey && !e.altKey && !e.metaKey) {
@@ -4940,6 +5048,126 @@ document.addEventListener('keydown', e => {
 
 // Alt is an editing modifier here: keep a bare Alt release from focusing the browser menu
 document.addEventListener('keyup', e => { if (e.key === 'Alt') e.preventDefault(); });
+
+// F1: translate tool - drag a rectangle over any image (modal or grid) and read what it says.
+// Every script's recognizer reads it; the most confident reading is on top, then its English translation
+let ocrTool = null;  // the overlay while the tool is on
+function ocrSelected() {
+  if (ocrTool) { ocrTool.remove(); ocrTool = null; return; }  // F1 again = off
+  const ov = ocrTool = document.createElement('div');
+  ov.style.cssText = 'position:fixed;inset:0;z-index:3050;cursor:crosshair;background:rgba(0,0,0,0.08)';
+  const rect = document.createElement('div');
+  rect.style.cssText = 'position:fixed;border:1px dashed #9fe870;background:rgba(159,232,112,0.12);display:none;pointer-events:none';
+  ov.appendChild(rect);
+  setStatus('Translate: drag over the text (Esc / F1 cancels)');
+  let a = null;
+  ov.addEventListener('mousedown', e => { if (e.button === 0) { a = [e.clientX, e.clientY]; e.preventDefault(); } });
+  ov.addEventListener('mousemove', e => {
+    if (!a) return;
+    Object.assign(rect.style, { display: 'block', left: Math.min(a[0], e.clientX) + 'px', top: Math.min(a[1], e.clientY) + 'px',
+                                width: Math.abs(e.clientX - a[0]) + 'px', height: Math.abs(e.clientY - a[1]) + 'px' });
+  });
+  ov.addEventListener('mouseup', e => {
+    if (!a) return;
+    const sr = [Math.min(a[0], e.clientX), Math.min(a[1], e.clientY), Math.max(a[0], e.clientX), Math.max(a[1], e.clientY)];
+    a = null;
+    ov.remove(); ocrTool = null;
+    if (sr[2] - sr[0] < 3 || sr[3] - sr[1] < 3) return;
+    const hit = ocrTarget((sr[0] + sr[2]) / 2, (sr[1] + sr[3]) / 2);
+    if (!hit) { setStatus('Translate: no image under the rectangle'); return; }
+    const { canvas, index, coords } = hit;
+    const cr = canvas.getBoundingClientRect(), k = canvas.width / cr.width;
+    const nx = x => Math.max(0, Math.min(1, ((x - cr.left) * k - coords.x) / coords.w));
+    const ny = y => Math.max(0, Math.min(1, ((y - cr.top) * k - coords.y) / coords.h));
+    const x1 = nx(sr[0]), x2 = nx(sr[2]), y1 = ny(sr[1]), y2 = ny(sr[3]);
+    if (x2 <= x1 || y2 <= y1) return;
+    ocrRead(images[index], [(x1 + x2) / 2, (y1 + y2) / 2, x2 - x1, y2 - y1], sr[2], sr[3]);
+  });
+  document.body.appendChild(ov);
+}
+// the canvas under a screen point and where its image is drawn
+function ocrTarget(x, y) {
+  for (const el of document.elementsFromPoint(x, y)) {
+    if (el.tagName !== 'CANVAS') continue;
+    if (modalOpen && el.id === 'modal-canvas') return { canvas: el, index: modalIndex, coords: { x: 0, y: 0, w: el.width, h: el.height } };
+    const item = el.closest('.grid-item');
+    if (item) {
+      const index = +item.dataset.index, coords = getCanvasCoords(el, index);
+      if (coords) return { canvas: el, index, coords };
+    }
+  }
+  return null;
+}
+async function ocrRead(path, box, px, py) {
+  const pop = document.getElementById('ocr-pop');
+  pop.style.left = Math.max(8, Math.min(window.innerWidth - 440, px + 12)) + 'px';
+  pop.style.top = Math.max(8, Math.min(window.innerHeight - 160, py + 12)) + 'px';
+  pop.textContent = 'Reading…';
+  pop.style.display = 'block';
+  try {
+    const r = await (await fetch('/ocr', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                                           body: JSON.stringify({ path, box }) })).json();
+    if (r.error || !r.best) { pop.textContent = 'OCR failed: ' + (r.error || 'no text'); return; }
+    pop.innerHTML = '';
+    const big = document.createElement('div');
+    big.style.cssText = 'font-size:16px;color:#fff;margin-bottom:4px;user-select:text';
+    big.textContent = r.best.text || '(nothing)';
+    pop.appendChild(big);
+    if (r.translation && r.translation.lang !== 'en') {
+      const tr = document.createElement('div');
+      tr.style.cssText = 'font-size:14px;color:#9fe870;margin-bottom:6px;user-select:text';
+      tr.textContent = r.translation.text ? `EN (${r.translation.lang}): ${r.translation.text}` : `translation failed: ${r.translation.error || ''}`;
+      pop.appendChild(tr);
+      const terms = Object.entries(r.translation.terms || {});
+      if (terms.length) {
+        const td = document.createElement('div');
+        td.style.cssText = 'color:#ffd166;margin-bottom:6px';
+        td.textContent = 'poker terms: ' + terms.map(([k, v]) => `${k} = ${v}`).join(', ');
+        pop.appendChild(td);
+      }
+    }
+    for (const o of r.all) {
+      const d = document.createElement('div');
+      d.style.color = o === r.best || o.model === r.best.model ? '#e94560' : '#999';
+      d.textContent = `${o.model.replace('_PP-OCRv5', '').replace('_rec', '')}: ${o.text || '-'}  (${o.score})`;
+      pop.appendChild(d);
+    }
+  } catch (err) { pop.textContent = 'OCR failed: ' + err; }
+}
+document.addEventListener('mousedown', e => { const pop = document.getElementById('ocr-pop'); if (!pop.contains(e.target)) pop.style.display = 'none'; });
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  document.getElementById('ocr-pop').style.display = 'none';
+  if (ocrTool) { ocrTool.remove(); ocrTool = null; }
+});
+
+function deleteSelectedRegion() {
+  if (modalOpen && modalSelectedIdx >= 0) {
+    modalRegions.splice(modalSelectedIdx, 1);
+    modalSelectedIdx = -1;
+    const path = images[modalIndex];
+    imageCache[path].regions = JSON.parse(JSON.stringify(modalRegions));
+    scheduleAutoSave(path, modalRegions);
+    renderModal();
+    renderModalRegionsList();
+  } else if (editInGrid && gridEditSelectedIdx >= 0) {
+    gridEditRegions.splice(gridEditSelectedIdx, 1);
+    gridEditSelectedIdx = -1;
+    const path = images[gridEditIndex];
+    imageCache[path].regions = JSON.parse(JSON.stringify(gridEditRegions));
+    scheduleAutoSave(path, gridEditRegions);
+    redrawGridCanvas(gridEditIndex);
+  }
+}
+// middle mouse button on an image deletes the selected box (and never starts a draw / a drag or the browser's autoscroll)
+const onImage = e => e.target === modalCanvas || e.target.classList?.contains('grid-item-canvas');
+document.addEventListener('mousedown', e => {
+  if (e.button !== 1 || !onImage(e)) return;
+  e.preventDefault(); e.stopImmediatePropagation();
+  deleteSelectedRegion();
+}, true);
+document.addEventListener('mouseup', e => { if (e.button === 1 && onImage(e)) { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
+document.addEventListener('auxclick', e => { if (e.button === 1 && onImage(e)) e.preventDefault(); }, true);
 
 // Cursor label follows mouse
 document.addEventListener('mousemove', e => {
@@ -4981,5 +5209,6 @@ document.getElementById('hotkey-input').addEventListener('keydown', e => {
   <div class="row"><label>Label</label><input type="checkbox" id="csp-label" onchange="classStyleInput()"></div>
   <div class="row" style="justify-content:flex-end"><button class="btn btn-secondary btn-sm" onclick="resetClassStyle()">Reset</button></div>
 </div>
+<div id="ocr-pop" style="display:none;position:fixed;z-index:3100;background:#1c1c1e;border:1px solid #e94560;border-radius:6px;padding:8px 12px;font-size:12px;color:#ddd;max-width:420px;line-height:1.5"></div>
 </body>
 </html>

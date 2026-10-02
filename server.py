@@ -455,6 +455,105 @@ def smart_box(image_path: str, points: list, cls_id, model_path: str, use_model:
     return {"box": [(x1 + x2) / 2 / W, (y1 + y2) / 2 / H, (x2 - x1) / W, (y2 - y1) / H], "source": src, "conf": conf}
 
 
+# ---- F1: read the text of a box (PP-OCRv5 recognizers, one per script; the most confident reading wins) ----
+OCR_MODELS = ("PP-OCRv5_server_rec", "latin_PP-OCRv5_mobile_rec", "cyrillic_PP-OCRv5_mobile_rec", "korean_PP-OCRv5_mobile_rec")
+_ocr = {}
+
+
+# offline translation to English (Opus-MT, downloaded once per language): the script of the text picks the model
+_mt = {}
+MT_MODELS = {"zh": "Helsinki-NLP/opus-mt-zh-en", "ja": "Helsinki-NLP/opus-mt-ja-en", "ko": "Helsinki-NLP/opus-mt-ko-en",
+             "ru": "Helsinki-NLP/opus-mt-ru-en", "mul": "Helsinki-NLP/opus-mt-mul-en"}
+
+
+def text_lang(t: str):
+    """Language family by script; None for plain English / digits."""
+    if any("\u3040" <= c <= "\u30ff" for c in t):
+        return "ja"
+    if any("\uac00" <= c <= "\ud7af" or "\u1100" <= c <= "\u11ff" for c in t):
+        return "ko"
+    if any("\u4e00" <= c <= "\u9fff" for c in t):
+        return "zh"
+    if any("\u0400" <= c <= "\u04ff" for c in t):
+        return "ru"
+    if any(ord(c) > 127 and c.isalpha() for c in t):
+        return "mul"
+    return None
+
+
+# poker terms a general translator gets wrong (弃牌 -> "Abandon"): exact phrase first, then terms found inside
+POKER_TERMS = {
+    "跟注": "Call", "弃牌": "Fold", "棄牌": "Fold", "加注": "Raise", "再加注": "Re-raise", "全下": "All-in", "全押": "All-in",
+    "看牌": "Check", "过牌": "Check", "過牌": "Check", "让牌": "Check", "讓牌": "Check", "下注": "Bet", "底池": "Pot",
+    "主池": "Main pot", "边池": "Side pot", "邊池": "Side pot", "盲注": "Blinds", "小盲": "Small blind", "大盲": "Big blind",
+    "前注": "Ante", "抓头": "Straddle", "庄家": "Dealer", "庄": "Dealer", "等待盲注": "Waiting for the big blind",
+    "等待": "Waiting", "坐下": "Sit down", "留座离桌": "Sit out (seat kept)", "留座": "Keep seat", "离桌": "Leave table", "离开": "Sit out", "離開": "Sit out", "暂离": "Sit out", "买入": "Buy-in",
+    "買入": "Buy-in", "补码": "Add chips", "赢": "Won", "赢得": "Won", "摊牌": "Showdown", "保险": "Insurance",
+    "对子": "Pair", "两对": "Two pair", "三条": "Three of a kind", "顺子": "Straight", "同花": "Flush", "葫芦": "Full house",
+    "四条": "Four of a kind", "同花顺": "Straight flush", "皇家同花顺": "Royal flush", "高牌": "High card",
+    "Пас": "Fold", "Чек": "Check", "Колл": "Call", "Рейз": "Raise", "Ставка": "Bet", "Олл-ин": "All-in", "Банк": "Pot",
+    "Сброс": "Fold", "Уравнять": "Call", "Повысить": "Raise",
+    "콜": "Call", "폴드": "Fold", "레이즈": "Raise", "체크": "Check", "베팅": "Bet", "올인": "All-in", "팟": "Pot",
+    "コール": "Call", "フォールド": "Fold", "レイズ": "Raise", "チェック": "Check", "ベット": "Bet", "オールイン": "All-in",
+}
+
+
+def translate(text: str) -> dict:
+    lang = text_lang(text)
+    if not lang or not text.strip():
+        return {"lang": "en", "text": text}
+    t = text.strip()
+    if t in POKER_TERMS:
+        return {"lang": lang, "text": POKER_TERMS[t], "terms": {t: POKER_TERMS[t]}}
+    terms = {k: v for k, v in sorted(POKER_TERMS.items(), key=lambda kv: -len(kv[0])) if k in t}
+    from transformers import MarianMTModel, MarianTokenizer
+    import torch
+    if lang not in _mt:
+        name = MT_MODELS[lang]
+        dev = "cuda" if torch.cuda.is_available() else "cpu"
+        _mt[lang] = (MarianTokenizer.from_pretrained(name), MarianMTModel.from_pretrained(name).to(dev).eval(), dev)
+    tok, model, dev = _mt[lang]
+    with torch.no_grad():
+        out = model.generate(**tok([text], return_tensors="pt", truncation=True).to(dev), max_new_tokens=64)
+    return {"lang": lang, "text": tok.decode(out[0], skip_special_tokens=True), "terms": terms}
+
+
+@serial
+def read_box(image_path: str, box) -> dict:
+    """box: normalized cx, cy, w, h -> {"best": {text, score, model}, "all": [...]}"""
+    import os
+    os.environ.setdefault("PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK", "True")
+    from paddleocr import TextRecognition
+    frame = cv2.imread(image_path)
+    if frame is None:
+        return {}
+    H, W = frame.shape[:2]
+    cx, cy, w, h = box
+    pad = 0.08
+    x1, y1 = max(0, int((cx - w / 2 - w * pad) * W)), max(0, int((cy - h / 2 - h * pad) * H))
+    x2, y2 = min(W, int((cx + w / 2 + w * pad) * W) + 1), min(H, int((cy + h / 2 + h * pad) * H) + 1)
+    crop = frame[y1:y2, x1:x2]
+    if crop.size == 0:
+        return {}
+    if crop.shape[0] < 48:  # the recognizers read ~48 px text
+        f = 48 / crop.shape[0]
+        crop = cv2.resize(crop, None, fx=f, fy=f, interpolation=cv2.INTER_CUBIC)
+    out = []
+    for name in OCR_MODELS:
+        if name not in _ocr:
+            _ocr[name] = TextRecognition(model_name=name)
+        r = _ocr[name].predict(crop)[0]
+        out.append({"model": name, "text": r["rec_text"], "score": round(float(r["rec_score"]), 3)})
+    # the longest confident reading wins: a recognizer that can't read a script drops it (1留座离桌 -> "1" at 0.96)
+    sure = [o for o in out if o["score"] >= 0.5 and o["text"].strip()] or out
+    best = max(sure, key=lambda o: (len(o["text"].strip()), o["score"]))
+    try:
+        tr = translate(best["text"])
+    except Exception as e:  # no translation is still a reading
+        tr = {"lang": "?", "text": "", "error": str(e)}
+    return {"best": best, "all": out, "translation": tr}
+
+
 @serial
 def detect_regions(image_path: str, model_path: str, class_names: dict) -> list:
     """Run detection on image."""
@@ -721,6 +820,20 @@ class YoloLabelHandler(SimpleHTTPRequestHandler):
             self.send_header("Content-type", "application/json")
             self.end_headers()
             self.wfile.write(b'{"ok": true}')
+            return
+
+        if self.path == "/ocr":
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length))
+            try:
+                out = read_box(data["path"], data["box"])
+            except Exception as e:  # never kill the server over a helper
+                print("ocr failed:", e)
+                out = {"error": str(e)}
+            self.send_response(200)
+            self.send_header("Content-type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(out, ensure_ascii=False).encode("utf-8"))
             return
 
         if self.path == "/smart":
