@@ -57,6 +57,8 @@ body { font-family: system-ui, sans-serif; background: #1c1c1e; color: #eee; hei
 
 .grid-item-footer { background: #111; padding: 4px 6px; }
 .grid-item-footer-top { display: flex; align-items: center; gap: 6px; }
+.grid-item-notes { font-size: 10px; color: #ffd27a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+body.hide-notes .grid-item-notes { display: none; }
 .grid-item-name { font-size: 10px; color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; position: relative; }
 .grid-item-name .cpills { position: absolute; right: 0; top: 50%; transform: translateY(-50%); display: flex; gap: 3px; }
 .grid-item-name .cpill { font-size: 9px; font-weight: bold; padding: 0 6px; border-radius: 8px; line-height: 13px; white-space: nowrap; }
@@ -222,7 +224,9 @@ body.no-sidebar #sidebar { display: none; }
   Ctrl+Drag → Clone region<br>
   Shift+Drag → Lock H/V axis<br>
   Detect / Detect Page → buttons<br>
-  Del / middle mouse button → Delete the selected region<br>
+  Del / middle mouse click → Delete the selected region<br>
+  Middle mouse drag → Erase the boxes under the stroke<br>
+  Ctrl+Z / Ctrl+Shift+Z (Ctrl+Y) → Undo / redo (per image)<br>
   F1 → translate tool: drag over text → OCR + English translation (offline); F1 / Esc cancels<br>
   Arrows → Move region 1px<br>
   Shift+Arrows → Move 5px<br>
@@ -314,6 +318,12 @@ body.no-sidebar #sidebar { display: none; }
       <option value="box">box</option>
     </select></label>
   <label style="font-size:11px;margin-left:6px;" title="Brightness of the overlap highlight">glow <input type="range" id="overlap-bright" min="0" max="100" value="100" style="width:70px;vertical-align:middle;" oninput="redrawOverlaps()" onchange="saveSettings()"></label>
+  <button class="btn btn-sm btn-secondary" style="margin-left:6px;font-size:11px;padding:1px 6px;" onclick="toggleOverlapRules()" title="Overlap highlight rules: per class pair, show (with its own %) or hide. The first matching rule decides; no match: the Overlap setting and the O checkboxes">rules<span id="overlap-rules-n"></span></button>
+  <div id="overlap-rules" style="display:none;flex-basis:100%;margin-top:4px;padding:4px;border:1px solid #444;border-radius:4px;">
+    <div style="font-size:10px;color:#999;margin-bottom:3px;">A / B: a, b · * all · !x all but x · B "=" same class as A. Pairs match both ways; the first matching rule decides; % = intersection / smaller box (0: any touch)</div>
+    <div id="overlap-rule-list" style="display:flex;flex-direction:column;gap:3px;"></div>
+    <button class="btn btn-sm btn-secondary" style="font-size:11px;margin-top:3px;" onclick="overlapRules.push({on: true, show: true, a: '*', b: '*', t: 0}); overlapRulesChanged(true)">+ rule</button>
+  </div>
   </div>
   <div class="setting-group">
     <label title="The 8 squares on a selected box's corners and sides. Hidden, they still work: grab a corner / side as before"><input type="checkbox" id="show-handles" onchange="saveSettings(); redrawAllGridCanvases(); if (modalOpen) renderModal();"> Resize handles</label>
@@ -324,6 +334,7 @@ body.no-sidebar #sidebar { display: none; }
 
 <div id="corner">
   <button class="btn btn-secondary btn-sm pop-toggle" id="dataset-btn" onclick="togglePop('header')" title="Dataset: load, pages, save, filter, mark">📂</button>
+  <button class="btn btn-secondary btn-sm" onclick="toggleFilterPopup()" title="Filter: notes, class rules, file names">🔖</button>
   <button class="btn btn-secondary btn-sm pop-toggle" onclick="togglePop('settings-bar')" title="Display settings">⚙</button>
   <button class="btn btn-secondary btn-sm pop-toggle" onclick="togglePop('help-pop')" title="Shortcuts and constraint rules">?</button>
   <button class="btn btn-secondary btn-sm" id="sidebar-btn" onclick="toggleSidebar()" title="Hide / show the sidebar">⇥</button>
@@ -388,11 +399,19 @@ body.no-sidebar #sidebar { display: none; }
       <span>Filter</span>
       <button class="popup-close" onclick="toggleFilterPopup()">×</button>
     </div>
+    <div style="font-size:12px;color:#aaa;margin-bottom:4px;">Notes (the dataset's notes.tsv)</div>
+    <div style="display:flex;gap:4px;align-items:center;margin-bottom:10px;font-size:12px;flex-wrap:wrap;">
+      <select id="note-mode" title="images with / without a matching note"><option value="">— no note filter —</option><option value="any">with a note</option><option value="none">without a note</option></select>
+      <select id="note-pick" title="one exact note, or any" style="max-width:190px;"><option value="">any note</option></select>
+      <input id="note-words" placeholder="words: a b, c" title="all words of a group, any group (comma): e.g. fixed / number / unusual / unsure, disagrees" style="width:120px;">
+      <span id="note-count" style="color:#777;"></span>
+    </div>
     <div style="font-size:12px;color:#aaa;margin-bottom:4px;">Class rules (all must pass)</div>
     <div id="rule-list" style="display:flex;flex-direction:column;gap:4px;margin-bottom:6px;"></div>
     <div style="display:flex;gap:6px;margin-bottom:10px;">
       <button class="btn btn-sm btn-secondary" onclick="addRule()">+ Rule</button>
-      <span style="font-size:11px;color:#777;align-self:center;">has A · lacks A · A overlaps B · no labels · unlabeled file</span>
+      <span style="font-size:11px;color:#777;align-self:center;">has A · lacks A · A overlaps B · no labels · unlabeled file · notes</span>
+      <label style="font-size:11px;color:#aaa;align-self:center;margin-left:auto;" title="the dataset's notes.tsv on the grid items"><input type="checkbox" id="show-notes" checked onchange="toggleNotes()"> Show notes</label>
     </div>
     <div style="font-size:12px;color:#aaa;margin-bottom:4px;">Filenames (optional, one per line, substring match)</div>
     <textarea id="filter-names" placeholder="Enter filenames (one per line)&#10;Matches by substring in filename" rows="6" style="width:100%;background:#0a0a0a;color:#fff;border:1px solid #333;border-radius:3px;font-size:12px;resize:vertical;font-family:monospace;padding:8px;box-sizing:border-box;"></textarea>
@@ -631,6 +650,7 @@ function setStatus(msg, type = '') {
 }
 
 function scheduleAutoSave(imagePath, regions, immediate = false) {
+  histTrack(imagePath, regions);
   // Update label counts immediately when regions change
   const idx = images.indexOf(imagePath);
   if (idx >= 0) updateGridItemCounts(idx);
@@ -1383,9 +1403,12 @@ const CONSTRAINT_HINT = { count: 'OK: min ≤ #A ≤ max', inside: 'OK: every A 
                           count_in: 'OK: #A is one of the listed numbers', count_each: 'OK: every class of A: min ≤ # ≤ max' };
 const CONSTRAINT_PALETTE = ['#ff5252', '#ffab40', '#ffd740', '#69f0ae', '#40c4ff', '#b388ff', '#ff80ab', '#a7ffeb'];
 
+// "a, b": these classes; "" or "*": all; "!x" excludes x ("*, !hero" / "!hero": all but hero; "seat, hero, !hero": seat)
 function classMatcher(list) {
-  const names = String(list || '').split(',').map(x => x.trim()).filter(x => x && x !== '*');
-  return names.length ? (c => names.includes(c)) : (() => true);
+  const parts = String(list || '').split(',').map(x => x.trim()).filter(Boolean);
+  const neg = parts.filter(x => x.startsWith('!')).map(x => x.slice(1).trim());
+  const pos = parts.filter(x => !x.startsWith('!') && x !== '*');
+  return c => (!pos.length || pos.includes(c)) && !neg.includes(c);
 }
 function xyxy(r) { const [cx, cy, w, h] = r.box; return [cx - w / 2, cy - h / 2, cx + w / 2, cy + h / 2]; }
 function areaOf(b) { return Math.max(0, b[2] - b[0]) * Math.max(0, b[3] - b[1]); }
@@ -1395,7 +1418,41 @@ function num(v, d) { const n = parseFloat(v); return isNaN(n) ? d : n; }
 
 // offending boxes of a rule: {broken, boxes}; a box is never compared with itself.
 // count: all A boxes when the number is out of range (none to show when there are too few)
+// a rule with `scope` (container classes, e.g. "seat, hero") is checked inside every container on its own: the
+// container and the boxes whose centres it holds (the smallest container wins); boxes outside all containers are one
+// more group. Two hands on two seats break nothing; two hands on one seat do
+function scopeGroups(rule, regions) {
+  const isC = classMatcher(rule.scope);
+  const conts = regions.filter(r => isC(r.class));
+  const groups = new Map(conts.map(c => [c, [c]]));
+  const outside = [];
+  for (const r of regions) {
+    if (groups.has(r)) continue;
+    const b = xyxy(r);
+    const own = conts.filter(c => centreIn(b, xyxy(c))).sort((p, q) => areaOf(xyxy(p)) - areaOf(xyxy(q)))[0];
+    (own ? groups.get(own) : outside).push(r);
+  }
+  return [...groups.values(), outside];
+}
 function constraintOffenders(rule, regions) {
+  if (String(rule.scope || '').trim()) {
+    const parts = scopeGroups(rule, regions).map(g => rawOffenders(rule, g)).filter(o => o.broken);
+    return { broken: parts.length > 0, boxes: [...new Set(parts.flatMap(o => o.boxes))], groups: parts.length };
+  }
+  return rawOffenders(rule, regions);
+}
+// NOT (rule.not): frame rules (counts, implies) break when the plain rule holds; box rules flag the A boxes the plain
+// rule does not, e.g. NOT overlap: A boxes overlapping no B
+const FRAME_RULES = ['count', 'count_in', 'count_each', 'implies'];
+function rawOffenders(rule, regions) {
+  const res = plainOffenders(rule, regions);
+  if (!rule.not) return res;
+  const A = regions.filter(r => classMatcher(rule.a)(r.class));
+  if (FRAME_RULES.includes(rule.type)) return { broken: !res.broken, boxes: res.broken ? [] : A };
+  const bad = A.filter(r => !res.boxes.includes(r));
+  return { broken: bad.length > 0, boxes: bad };
+}
+function plainOffenders(rule, regions) {
   const A = regions.filter(r => classMatcher(rule.a)(r.class));
   const B = regions.filter(r => classMatcher(rule.b)(r.class));
   const lo = num(rule.min, 0), hi = num(rule.max, Infinity), t = num(rule.t, 0) / 100;
@@ -1442,7 +1499,9 @@ function constraintOffenders(rule, regions) {
 // number of offending boxes (count rule: 1 when broken)
 function checkConstraint(rule, regions) {
   const o = constraintOffenders(rule, regions);
-  return !o.broken ? 0 : ['count', 'implies', 'count_in'].includes(rule.type) ? 1 : o.boxes.length;
+  if (!o.broken) return 0;
+  if (['count', 'implies', 'count_in'].includes(rule.type)) return o.groups || 1;
+  return o.boxes.length;
 }
 
 // accepted violations: {image stem: [rule names]} - a rule the image legitimately breaks (a click on its pill)
@@ -1563,6 +1622,27 @@ function addConstraint() {
                      on: true, type: 'count', a: '', b: '', min: '', max: '1', t: '90' });
   constraintsChanged(true);
 }
+// ---- notes: <dataset>/notes.tsv ("file<TAB>text" per line, several per file), written by scripts; shown on the
+// grid items (toggle) and filterable (rules "has note" / "no note": any, one exact note, words)
+let notes = {};  // image stem (lower case) -> [text]
+async function loadNotes() {
+  notes = {};
+  try { notes = (await (await fetch(`/notes?base=${encodeURIComponent(datasetBase)}`)).json()).notes || {}; } catch (e) {}
+  const n = Object.values(notes).reduce((a, v) => a + v.length, 0);
+  if (n) setStatus(`Notes: ${n} on ${Object.keys(notes).length} images`);
+}
+function notesOf(path) { return notes[path.split(/[/\\]/).pop().replace(/\.[^.]+$/, '').toLowerCase()] || []; }
+function noteTexts() { return [...new Set(Object.values(notes).flat())].sort(); }
+function noteMatches(list, r) {  // r.note: '' any / one exact text; r.words: "a b" all words, "a b, c" any group
+  const pool = r.note ? list.filter(t => t === r.note) : list;
+  const groups = (r.words || '').toLowerCase().split(',').map(g => g.trim().split(/\s+/).filter(Boolean)).filter(g => g.length);
+  return pool.some(t => !groups.length || groups.some(g => g.every(w => t.toLowerCase().includes(w))));
+}
+function toggleNotes() {
+  document.body.classList.toggle('hide-notes', !document.getElementById('show-notes').checked);
+  try { localStorage.setItem('yoloLabelerHideNotes', document.getElementById('show-notes').checked ? '' : '1'); } catch (e) {}
+}
+
 // the level's shared rule file (parent folder of the dataset); an old per-dataset list seeds it once
 async function loadLevelConstraints(fallback) {
   let rules = null, file = '';
@@ -1648,15 +1728,24 @@ function renderConstraints() {
     hit.onclick = () => filterBroken(String(i));
     row(on, field('color', 'colour', '', 'color'), field('name', 'name'), del);
     const f = CONSTRAINT_FIELDS[c.type] || [];
-    row(type, hit);
+    const not = document.createElement('label');
+    not.style.cssText = 'font-size:11px;'; not.title = 'invert: counts / implies break when the plain rule holds; box rules flag the A boxes the plain rule does not (NOT overlap: A overlapping no B)';
+    const notBox = document.createElement('input');
+    notBox.type = 'checkbox'; notBox.checked = !!c.not;
+    notBox.onchange = () => { c.not = notBox.checked; constraintsChanged(false); };
+    not.append(notBox, ' NOT');
+    row(type, not, hit);
     const hint = document.createElement('span');
     hint.style.cssText = 'font-size:10px;color:#999;'; hint.textContent = CONSTRAINT_HINT[c.type] || '';
     row(hint);
-    if (f.includes('a')) row(field('a', 'A classes'));
-    if (f.includes('b')) row(field('b', 'B classes'));
+    if (f.includes('a')) row(field('a', 'A classes (a, b; * all; !x all but x)'));
+    if (f.includes('b')) row(field('b', 'B classes (a, b; * all; !x all but x; = same as A)'));
     if (f.includes('vals')) row(field('vals', 'allowed counts, e.g. 0,2,4'));
     const nums = ['min', 'max', 't'].filter(k => f.includes(k)).map(k => field(k, k === 't' ? '%' : k, 'cnum'));
     if (nums.length) row(...nums);
+    const sc = field('scope', 'per: containers (e.g. seat, hero) - checked inside each one; empty: the whole image');
+    sc.setAttribute('list', 'constraint-classes');
+    row(sc);
     box.appendChild(card);
   });
   updateConstraintHits();
@@ -1693,22 +1782,66 @@ async function smartRequest(path, points) {
     return (await res.json()).box || null;
   } catch (e) { return null; }
 }
-// hover: one request in flight, only the latest cursor position matters
-async function smartHover(path, regions, pt, redraw) {
-  smart.next = { path, regions, pt, redraw };
-  if (smart.busy) return;
-  smart.busy = true;
-  while (smart.next) {
-    const job = smart.next; smart.next = null;
-    const box = smartActive() ? await smartRequest(job.path, [job.pt]) : null;
-    if (smart.stroke) continue;  // a stroke started meanwhile: no suggestion over it
-    smart.preview = box; smart.path = job.path; smart.regions = job.regions;
-    job.redraw();
-    refreshZoom();  // the suggestion arrives after the mouse move that drew the zoom
-  }
-  smart.busy = false;
+// hover: suggestions come from a per-image client cache; the cursor resting 0.5 s outside the cached area asks the
+// server for the region around it (model proposals of every class + SAM boxes of a point grid), once per region
+const SMART_REST_MS = 500;
+smart.cache = {};  // path -> {regions: [{region, step}], props: [{cls, conf, box}], sam: [{pt, step, box}]}
+function smartCacheFor(path) {
+  const model = document.getElementById('model-path').value.trim();
+  if (smart.cacheModel !== model) { smart.cache = {}; smart.cacheModel = model; }
+  return smart.cache[path] || (smart.cache[path] = { regions: [], props: [], sam: [], seen: new Set() });
 }
-function smartClear(redraw) { if (smart.preview || smart.stroke) { smart.preview = null; smart.stroke = null; redraw(); refreshZoom(); } }
+const smartHolds = (b, [x, y]) => Math.abs(x - b[0]) <= b[2] / 2 && Math.abs(y - b[1]) <= b[3] / 2;
+function smartLookup(path, pt) {
+  const c = smartCacheFor(path);
+  const clsId = parseInt(Object.entries(classNames).find(([k, v]) => v === drawingClass)?.[0]);
+  if (document.getElementById('smart-model').checked) {
+    const p = c.props.filter(p => p.cls === clsId && smartHolds(p.box, pt)).sort((a, b) => b.conf - a.conf)[0];
+    if (p) return p.box;
+  }
+  // SAM: the box of the nearest grid point holding the cursor (no farther than ~one grid step)
+  let best = null, bestD = Infinity;
+  for (const s of c.sam) {
+    const dx = (s.pt[0] - pt[0]) / s.step[0], dy = (s.pt[1] - pt[1]) / s.step[1], d = dx * dx + dy * dy;
+    if (d <= 1 && d < bestD && smartHolds(s.box, pt)) { best = s.box; bestD = d; }
+  }
+  return best;
+}
+// the cursor is inside a fetched region, a grid step away from its edges (grid points on every side)
+const smartCovered = (path, [x, y]) => smartCacheFor(path).regions.some(({ region: r, step: s }) =>
+  x >= r[0] + s[0] && x <= r[2] - s[0] && y >= r[1] + s[1] && y <= r[3] - s[1]);
+async function smartFetch(path, pt) {
+  const c = smartCacheFor(path);
+  try {
+    const res = await fetch('/smart_region', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({
+      path, pt, model: document.getElementById('model-path').value.trim(), use_model: document.getElementById('smart-model').checked }) });
+    const out = await res.json();
+    if (!out.region) return;
+    c.regions.push({ region: out.region, step: out.step });
+    for (const p of out.proposals) { const k = p.cls + ':' + p.box.join(','); if (!c.seen.has(k)) { c.seen.add(k); c.props.push(p); } }
+    for (const s of out.sam) c.sam.push({ ...s, step: out.step });
+  } catch (e) { return; }
+  const h = smart.hover;  // the cursor may have moved meanwhile: suggest for where it is now
+  if (h && h.path === path && !smart.stroke) smartShow(h);
+}
+function smartShow(h) {
+  const box = smartActive() ? smartLookup(h.path, h.pt) : null;
+  if (box === smart.preview && smart.path === h.path) return;
+  smart.preview = box; smart.path = h.path; smart.regions = h.regions;
+  h.redraw();
+  refreshZoom();
+}
+function smartHover(path, regions, pt, redraw) {
+  smart.hover = { path, regions, pt, redraw };
+  clearTimeout(smart.timer);
+  if (smart.stroke) return;
+  smartShow(smart.hover);
+  if (smartActive() && !smartCovered(path, pt)) smart.timer = setTimeout(() => smartFetch(path, pt), SMART_REST_MS);
+}
+function smartClear(redraw) {
+  clearTimeout(smart.timer); smart.hover = null;
+  if (smart.preview || smart.stroke) { smart.preview = null; smart.stroke = null; redraw(); refreshZoom(); }
+}
 function refreshZoom() {
   if (!lastZoomEvent || zoomWindow.style.display !== 'block') return;
   if (lastZoomIndex >= 0) updateZoomWindow(lastZoomEvent, lastZoomIndex); else updateModalZoomWindow(lastZoomEvent);
@@ -1960,6 +2093,7 @@ async function loadLabelCache() {
       }
       if (s.classStyle && typeof s.classStyle === 'object') classStyle = s.classStyle;
       await loadLevelConstraints(s.constraints);
+      await loadNotes();
       if (s.overlapBright !== undefined) document.getElementById('overlap-bright').value = s.overlapBright;
       if (s.labelsOnHover !== undefined) document.getElementById('labels-on-hover').checked = s.labelsOnHover;
       if (s.dimOthers !== undefined) document.getElementById('dim-others').checked = s.dimOthers;
@@ -1974,6 +2108,7 @@ async function loadLabelCache() {
       if (s.smartMode !== undefined) document.getElementById('smart-mode').checked = s.smartMode;
       if (s.smartModel !== undefined) document.getElementById('smart-model').checked = s.smartModel;
       if (s.smartOverwrite !== undefined) document.getElementById('smart-overwrite').checked = s.smartOverwrite;
+      if (Array.isArray(s.overlapRules)) { overlapRules = s.overlapRules; setTimeout(() => overlapRulesChanged(false), 0); }
       if (s.ignoreOverlapClasses && Array.isArray(s.ignoreOverlapClasses)) {
         ignoreOverlapClasses = new Set(s.ignoreOverlapClasses);
       }
@@ -2041,6 +2176,7 @@ async function saveSettings() {
     handleSize: document.getElementById('handle-size').value,
     dimRadius: document.getElementById('dim-radius').value,
     ignoreOverlapClasses: Array.from(ignoreOverlapClasses),
+    overlapRules,
     noDetectClasses: Array.from(noDetectClasses),
     smartMode: document.getElementById('smart-mode').checked,
     constraintAcks: constraintAcks,
@@ -2332,6 +2468,14 @@ function createGridItem(index, w, h, fullWidthMode = false) {
   
   footerTop.appendChild(buttonsDiv);
   footer.appendChild(footerTop);
+  const nts = notesOf(path);
+  if (nts.length) {
+    const nd = document.createElement('div');
+    nd.className = 'grid-item-notes';
+    nd.textContent = nts.join(' · ');
+    nd.title = nts.join('\n');
+    footer.appendChild(nd);
+  }
   
   const countsDiv = document.createElement('div');
   countsDiv.className = 'grid-item-counts';
@@ -2435,6 +2579,7 @@ async function loadThumbnailFullWidth(index, item, availableWidth, itemCount, fi
         }
       }
       imageCache[path].regions = regions || [];
+      histBase(path);
     }
     
     drawRegions(ctx, regions || [], 0, 0, w, h, false);
@@ -2492,6 +2637,7 @@ async function loadThumbnail(index, canvas) {
         }
       }
       imageCache[path].regions = regions || [];
+      histBase(path);
     }
     
     drawRegions(ctx, regions || [], x, y, w, h, false);
@@ -2546,19 +2692,75 @@ function overlapAreaMode() { // intersection-only drawing
   return overlapMode() !== 'none' && overlapShow() === 'area';
 }
 
+// Overlap highlight rules: [{on, show, a, b, t}] - the first enabled rule matching the pair (either way round) decides:
+// show with its own threshold t (%), or hide. No match: the Overlap setting and the per-class "ignore overlaps" boxes.
+let overlapRules = [];
+function overlapRuleFor(ca, cb) {
+  for (const r of overlapRules) {
+    if (r.on === false) continue;
+    const A = classMatcher(r.a), same = String(r.b || '').trim() === '=', B = same ? null : classMatcher(r.b);
+    const hit = same ? ca === cb && A(ca) : (A(ca) && B(cb)) || (A(cb) && B(ca));
+    if (hit) return r;
+  }
+  return null;
+}
+function overlapRulesChanged(rerender) {
+  saveSettings();
+  if (rerender) renderOverlapRules();
+  document.getElementById('overlap-rules-n').textContent = overlapRules.length ? ` (${overlapRules.filter(r => r.on !== false).length})` : '';
+  redrawOverlaps();
+}
+function toggleOverlapRules() {
+  const el = document.getElementById('overlap-rules');
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  renderOverlapRules();
+}
+function renderOverlapRules() {
+  const box = document.getElementById('overlap-rule-list');
+  box.innerHTML = '';
+  overlapRules.forEach((r, k) => {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:4px;align-items:center;font-size:11px;';
+    const inp = (key, ph, w, type = 'text') => {
+      const e = document.createElement('input');
+      e.type = type; e.placeholder = ph; e.title = ph; e.value = r[key] ?? ''; e.style.width = w;
+      if (type === 'text') e.setAttribute('list', 'constraint-classes');
+      e.oninput = () => { r[key] = type === 'number' ? (parseFloat(e.value) || 0) : e.value; overlapRulesChanged(false); };
+      return e;
+    };
+    const on = document.createElement('input');
+    on.type = 'checkbox'; on.checked = r.on !== false; on.title = 'enabled';
+    on.onchange = () => { r.on = on.checked; overlapRulesChanged(false); };
+    const show = document.createElement('select');
+    show.add(new Option('show', '1', false, r.show !== false)); show.add(new Option('hide', '0', false, r.show === false));
+    show.onchange = () => { r.show = show.value === '1'; overlapRulesChanged(false); };
+    const up = document.createElement('button');
+    up.textContent = '↑'; up.title = 'earlier (rules are tried in order)'; up.className = 'btn btn-sm btn-secondary'; up.style.padding = '0 4px';
+    up.onclick = () => { if (k) { [overlapRules[k - 1], overlapRules[k]] = [overlapRules[k], overlapRules[k - 1]]; overlapRulesChanged(true); } };
+    const del = document.createElement('button');
+    del.textContent = '✕'; del.className = 'btn btn-sm btn-secondary'; del.style.padding = '0 4px';
+    del.onclick = () => { overlapRules.splice(k, 1); overlapRulesChanged(true); };
+    row.append(on, show, inp('a', 'A classes', '110px'), document.createTextNode('×'), inp('b', 'B classes (= same as A)', '110px'),
+               inp('t', '% of the smaller box', '44px', 'number'), document.createTextNode('%'), up, del);
+    box.appendChild(row);
+  });
+}
+
 // Intersection rectangles (normalized cx,cy,w,h -> x1,y1,x2,y2) for every overlapping pair
 function findOverlapRects(regions) {
   const rects = [];
   for (let i = 0; i < regions.length; i++) {
     for (let j = i + 1; j < regions.length; j++) {
       const a = regions[i], b = regions[j];
-      if (ignoreOverlapClasses.has(a.class) || ignoreOverlapClasses.has(b.class)) continue;
+      const rule = overlapRuleFor(a.class, b.class);
+      if (rule && rule.show === false) continue;
+      if (!rule && (ignoreOverlapClasses.has(a.class) || ignoreOverlapClasses.has(b.class))) continue;
       const x1 = Math.max(a.box[0] - a.box[2]/2, b.box[0] - b.box[2]/2);
       const x2 = Math.min(a.box[0] + a.box[2]/2, b.box[0] + b.box[2]/2);
       const y1 = Math.max(a.box[1] - a.box[3]/2, b.box[1] - b.box[3]/2);
       const y2 = Math.min(a.box[1] + a.box[3]/2, b.box[1] + b.box[3]/2);
       if (!(x2 > x1 && y2 > y1)) continue;
-      const minShare = OVERLAP_MIN_SHARE[overlapMode()];
+      const minShare = rule ? num(rule.t, 0) / 100 : OVERLAP_MIN_SHARE[overlapMode()];
       if (minShare) {
         const inter = (x2 - x1) * (y2 - y1);
         const smaller = Math.min(a.box[2] * a.box[3], b.box[2] * b.box[3]);
@@ -3342,11 +3544,13 @@ function gridMouseDown(e, index) {
     const c = getCanvasCoords(canvas, index);
     if (c) {
       const boxPx = r => [c.x + (r.box[0] - r.box[2]/2) * c.w, c.y + (r.box[1] - r.box[3]/2) * c.h, r.box[2] * c.w, r.box[3] * c.h];
-      const hit = r => { const [rx, ry, rw, rh] = boxPx(r); return mx >= rx && mx <= rx + rw && my >= ry && my <= ry + rh; };
-      let i = gridEditSelectedIdx >= 0 && hit(gridEditRegions[gridEditSelectedIdx]) ? gridEditSelectedIdx : -1;
-      for (let k = gridEditRegions.length - 1; i < 0 && k >= 0; k--) if (hit(gridEditRegions[k])) i = k;
+      // the selected box if under the cursor (Alt-drag moves it), else the smallest; a still Alt-click on the
+      // selected one steps to the next box under the cursor, as a plain click does
+      const hits = hitsAt(gridEditRegions, mx, my, boxPx);
+      const i = hits.includes(gridEditSelectedIdx) ? gridEditSelectedIdx : (hits[0] ?? -1);
       if (i >= 0) {
         e.preventDefault();
+        armClickCycle(e, hits, gridEditSelectedIdx);
         gridEditSelectedIdx = i;
         gridDragMode = altZoneMode(mx, my, ...boxPx(gridEditRegions[i]));
         gridDragStart = { x: mx, y: my };
@@ -3592,9 +3796,13 @@ function getCanvasCoords(canvas, index) {
   return { x, y, w, h };
 }
 
+const THUMBS_KEEP = 60;
+const thumbLru = [];
 // the image scaled to the card once; animation frames (30 fps) and hover redraws reuse it
 function thumbOf(cached, w, h) {
   w = Math.max(1, Math.round(w)); h = Math.max(1, Math.round(h));
+  // not decoded yet: draw the image itself, cache nothing (a thumb made now stays black for good)
+  if (!cached.img.complete || !cached.img.naturalWidth) return cached.img;
   const t = cached.thumb;
   if (t && t.width === w && t.height === h && t.src === cached.img) return t;
   const c = document.createElement('canvas');
@@ -3603,6 +3811,10 @@ function thumbOf(cached, w, h) {
   g.imageSmoothingQuality = 'high';
   g.drawImage(cached.img, 0, 0, w, h);
   cached.thumb = c;
+  // a thumb canvas per loaded image ran into the browser's canvas memory over a 1k-frame set: its backing stores
+  // were dropped and the cards turned black. Only the latest THUMBS_KEEP are kept; the others are redrawn when needed
+  thumbLru.push(cached);
+  while (thumbLru.length > THUMBS_KEEP) { const old = thumbLru.shift(); if (old !== cached) old.thumb = null; }
   return c;
 }
 
@@ -4268,11 +4480,11 @@ modalCanvas.addEventListener('mousedown', e => {
   if (e.altKey) {
     const boxPx = r => [(r.box[0] - r.box[2]/2) * modalCanvas.width, (r.box[1] - r.box[3]/2) * modalCanvas.height,
                         r.box[2] * modalCanvas.width, r.box[3] * modalCanvas.height];
-    const hit = r => { const [rx, ry, rw, rh] = boxPx(r); return mx >= rx && mx <= rx + rw && my >= ry && my <= ry + rh; };
-    let i = modalSelectedIdx >= 0 && hit(modalRegions[modalSelectedIdx]) ? modalSelectedIdx : -1;
-    for (let k = modalRegions.length - 1; i < 0 && k >= 0; k--) if (hit(modalRegions[k])) i = k;
+    const hits = hitsAt(modalRegions, mx, my, boxPx);  // as in the grid: selected if under the cursor, else the smallest
+    const i = hits.includes(modalSelectedIdx) ? modalSelectedIdx : (hits[0] ?? -1);
     if (i >= 0) {
       e.preventDefault();
+      armClickCycle(e, hits, modalSelectedIdx);
       modalSelectedIdx = i;
       modalDragMode = altZoneMode(mx, my, ...boxPx(modalRegions[i]));
       modalDragStart = { x: mx, y: my };
@@ -4685,8 +4897,9 @@ function goToPage() {
 
 // ---- class-rule filters: evaluated on label files fetched from /label_boxes (fresh on every Apply)
 let filterRules = []; // [{type, a, b, min}]
-const RULE_TYPES = [["has", "has class A"], ["lacks", "lacks class A"], ["overlap", "A overlaps B"],
-                    ["nolabels", "no boxes at all"], ["nofile", "no label file"], ["broken", "breaks constraint"]];
+const RULE_TYPES = [["has", "has class A"], ["lacks", "lacks class A"], ["overlap", "A overlaps B"], ["nooverlap", "an A overlaps no B"],
+                    ["nolabels", "no boxes at all"], ["nofile", "no label file"], ["broken", "breaks constraint"],
+                    ["note", "has note"], ["nonote", "no note"]];
 
 function classOptions(sel) {
   return Object.entries(classNames).map(([i, n]) => `<option value="${i}" ${String(sel) === i ? 'selected' : ''}>${n}</option>`).join('');
@@ -4698,13 +4911,16 @@ function renderRules() {
   filterRules.forEach((r, k) => {
     const row = document.createElement('div');
     row.style.cssText = 'display:flex;gap:4px;align-items:center;font-size:12px;';
-    const needA = r.type === 'has' || r.type === 'lacks' || r.type === 'overlap';
+    const needA = ['has', 'lacks', 'overlap', 'nooverlap'].includes(r.type);
     row.innerHTML =
       `<select data-k="${k}" data-f="type">${RULE_TYPES.map(([v, t]) => `<option value="${v}" ${r.type === v ? 'selected' : ''}>${t}</option>`).join('')}</select>` +
       (needA ? `<select data-k="${k}" data-f="a" title="A">${classOptions(r.a)}</select>` : '') +
       (r.type === 'broken' ? `<select data-k="${k}" data-f="c"><option value="">any constraint</option>${
         constraints.map((c, i) => `<option value="${i}" ${String(r.c) === String(i) ? 'selected' : ''}>${c.name}</option>`).join('')}</select>` : '') +
-      (r.type === 'overlap' ? `<select data-k="${k}" data-f="b" title="B">${classOptions(r.b)}</select>` +
+      (r.type === 'note' || r.type === 'nonote' ? `<select data-k="${k}" data-f="note" title="one note, or any"><option value="">any note</option>${
+        noteTexts().map(t => `<option value="${t.replace(/"/g, '&quot;')}" ${r.note === t ? 'selected' : ''}>${t.length > 40 ? t.slice(0, 40) + '…' : t}</option>`).join('')}</select>` +
+        `<input data-k="${k}" data-f="words" value="${(r.words || '').replace(/"/g, '&quot;')}" placeholder="words: a b, c" title="all words of a group, any group (comma)" style="width:110px;">` : '') +
+      (r.type === 'overlap' || r.type === 'nooverlap' ? `<select data-k="${k}" data-f="b" title="B">${classOptions(r.b)}</select>` +
         `<input data-k="${k}" data-f="min" type="number" step="0.05" min="0" max="1" value="${r.min}" title="min overlap: intersection / smaller box" style="width:52px;">` : '') +
       `<button class="btn btn-sm btn-secondary" onclick="filterRules.splice(${k},1);renderRules();">×</button>`;
     box.appendChild(row);
@@ -4731,6 +4947,8 @@ function overlapShare(p, q) { // intersection / area of the smaller box, yolo xy
 
 function passesRules(boxes, path) { // boxes: array or null (no label file)
   return filterRules.every(r => {
+    if (r.type === 'note') return noteMatches(notesOf(path), r);
+    if (r.type === 'nonote') return !noteMatches(notesOf(path), r);
     if (r.type === 'nofile') return boxes === null;
     const bx = boxes || [];
     if (r.type === 'broken') {
@@ -4743,7 +4961,8 @@ function passesRules(boxes, path) { // boxes: array or null (no label file)
     if (r.type === 'has') return A.length > 0;
     if (r.type === 'lacks') return A.length === 0;
     const B = bx.filter(b => String(b[0]) === String(r.b));
-    return A.some(p => B.some(q => p !== q && overlapShare(p, q) >= (r.min || 0) && (r.min > 0 || overlapShare(p, q) > 0)));
+    const hits = p => B.some(q => p !== q && overlapShare(p, q) >= (r.min || 0) && (r.min > 0 || overlapShare(p, q) > 0));
+    return r.type === 'nooverlap' ? A.some(p => !hits(p)) : A.some(hits);
   });
 }
 
@@ -4753,8 +4972,16 @@ async function fetchLabelBoxes(paths) {
   return res.json();
 }
 
+function renderNotePick() {
+  const sel = document.getElementById('note-pick'), cur = sel.value;
+  const counts = {};
+  Object.values(notes).forEach(v => v.forEach(t => { counts[t] = (counts[t] || 0) + 1; }));
+  sel.innerHTML = '<option value="">any note</option>' + noteTexts().map(t =>
+    `<option value="${t.replace(/"/g, '&quot;')}" ${t === cur ? 'selected' : ''}>${(t.length > 50 ? t.slice(0, 50) + '…' : t).replace(/</g, '&lt;')} (${counts[t]})</option>`).join('');
+  document.getElementById('note-count').textContent = `${Object.keys(notes).length} images have notes`;
+}
 function toggleFilterPopup() {
-  if (!document.getElementById('filter-overlay').classList.contains('visible')) renderRules();
+  if (!document.getElementById('filter-overlay').classList.contains('visible')) { renderRules(); renderNotePick(); }
   const overlay = document.getElementById('filter-overlay');
   overlay.classList.toggle('visible');
 }
@@ -4784,9 +5011,15 @@ async function applyFilter() {
     activeFilter = activeFilter.concat(filterRules.map(r => `rule:${r.type}`));
   }
 
+  const noteMode = document.getElementById('note-mode').value;
+  if (noteMode) {
+    const r = { note: document.getElementById('note-pick').value, words: document.getElementById('note-words').value };
+    pool = pool.filter(p => noteMatches(notesOf(p), r) === (noteMode === 'any'));
+    activeFilter = activeFilter.concat(['note:' + noteMode]);
+  }
   if (lines.length === 0) {
     images = [...pool];
-    statusEl.textContent = filterRules.length ? `Matched ${images.length} of ${allImages.length}` : '';
+    statusEl.textContent = filterRules.length || noteMode ? `Matched ${images.length} of ${allImages.length}` : '';
     statusEl.style.color = images.length > 0 ? '#4ade80' : '#ff6b6b';
   } else {
     // Get sample for debugging
@@ -4833,6 +5066,7 @@ async function filterBroken(c) {
 }
 
 function clearFilter() {
+  document.getElementById('note-mode').value = ''; document.getElementById('note-words').value = '';
   document.getElementById('only-broken').checked = false;
   document.getElementById('filter-names').value = '';
   document.getElementById('filter-status').textContent = '';
@@ -5159,15 +5393,115 @@ function deleteSelectedRegion() {
     redrawGridCanvas(gridEditIndex);
   }
 }
-// middle mouse button on an image deletes the selected box (and never starts a draw / a drag or the browser's autoscroll)
+// middle mouse button on an image: a click deletes the selected box; a drag erases every box the stroke passes over
+// (the smallest under the cursor; a box around an erased one goes only once the stroke leaves the erased one's area).
+// Never starts a draw / a drag or the browser's autoscroll
 const onImage = e => e.target === modalCanvas || e.target.classList?.contains('grid-item-canvas');
+let mmb = null;  // {canvas, index (grid) | -1 (modal), x, y, moved, erased: [boxes]}
+function mmbPoint(e) {  // the cursor in image fractions on the stroke's canvas
+  const cv = mmb.canvas, rect = cv.getBoundingClientRect();
+  const px = (e.clientX - rect.left) * cv.width / rect.width, py = (e.clientY - rect.top) * cv.height / rect.height;
+  const c = mmb.index < 0 ? { x: 0, y: 0, w: cv.width, h: cv.height } : getCanvasCoords(cv, mmb.index);
+  return c ? [(px - c.x) / c.w, (py - c.y) / c.h] : null;
+}
+function mmbErase(e) {
+  const n = mmbPoint(e);
+  if (!n) return;
+  const inBox = b => n[0] >= b[0] - b[2] / 2 && n[0] <= b[0] + b[2] / 2 && n[1] >= b[1] - b[3] / 2 && n[1] <= b[1] + b[3] / 2;
+  if (mmb.erased.some(inBox)) return;
+  const modal = mmb.index < 0;
+  if (!modal && gridEditIndex !== mmb.index) {  // erase on a grid image that is not being edited: make it the edited one
+    gridEditIndex = mmb.index;
+    gridEditRegions = JSON.parse(JSON.stringify(imageCache[images[mmb.index]]?.regions || []));
+    gridEditSelectedIdx = -1;
+  }
+  const regions = modal ? modalRegions : gridEditRegions;
+  const i = regionAt(regions, n[0], n[1], 0, 0, 1, 1);
+  if (i < 0) return;
+  mmb.erased.push(regions[i].box);
+  regions.splice(i, 1);
+  const path = images[modal ? modalIndex : mmb.index];
+  imageCache[path].regions = JSON.parse(JSON.stringify(regions));
+  scheduleAutoSave(path, regions);
+  if (modal) { modalSelectedIdx = -1; renderModal(); renderModalRegionsList(); }
+  else { gridEditSelectedIdx = -1; redrawGridCanvas(mmb.index); }
+}
 document.addEventListener('mousedown', e => {
   if (e.button !== 1 || !onImage(e)) return;
   e.preventDefault(); e.stopImmediatePropagation();
-  deleteSelectedRegion();
+  const index = e.target === modalCanvas ? -1 : +e.target.closest('.grid-item')?.dataset.index;
+  mmb = { canvas: e.target, index: Number.isFinite(index) ? index : -1, x: e.clientX, y: e.clientY, moved: false, erased: [] };
 }, true);
-document.addEventListener('mouseup', e => { if (e.button === 1 && onImage(e)) { e.preventDefault(); e.stopImmediatePropagation(); } }, true);
+document.addEventListener('mousemove', e => {
+  if (!mmb || !(e.buttons & 4)) return;
+  if (!mmb.moved && Math.hypot(e.clientX - mmb.x, e.clientY - mmb.y) < 4) return;
+  if (!mmb.moved) { mmb.moved = true; histStroke(); }
+  mmbErase(e);
+}, true);
+document.addEventListener('mouseup', e => {
+  if (e.button !== 1) return;
+  if (mmb && !mmb.moved) deleteSelectedRegion();
+  if (mmb || onImage(e)) { e.preventDefault(); e.stopImmediatePropagation(); }
+  mmb = null;
+}, true);
 document.addEventListener('auxclick', e => { if (e.button === 1 && onImage(e)) e.preventDefault(); }, true);
+
+// ---- undo / redo (Ctrl+Z / Ctrl+Shift+Z or Ctrl+Y), per image: snapshots of its boxes taken as edits are saved.
+// Edits closer than HIST_MERGE_MS are one step (a drag saves many times); a middle-button stroke is one step
+const HIST_MERGE_MS = 400;
+const hist = {};  // path -> {undo: [json], redo: [json], last: json, at: ms}
+function histBase(path) {
+  hist[path] = { undo: [], redo: [], last: JSON.stringify(imageCache[path]?.regions || []), at: 0 };
+}
+let strokeId = 0, inStroke = false;
+function histStroke() { strokeId++; inStroke = true; }
+document.addEventListener('mouseup', () => { inStroke = false; });
+function histTrack(path, regions) {
+  const h = hist[path];
+  const s = JSON.stringify(regions || []);
+  if (!h || h.applying || h.last === s) { if (h) h.last = s; return; }
+  const now = Date.now();
+  const merge = inStroke ? h.strokeId === strokeId : now - h.at <= HIST_MERGE_MS;
+  if (!merge) {
+    h.undo.push(h.last);
+    if (h.undo.length > 300) h.undo.shift();
+  }
+  h.strokeId = inStroke ? strokeId : -1;
+  h.redo = [];
+  h.at = now;
+  h.last = s;
+}
+function histStep(dir) {  // -1 undo, +1 redo
+  const index = modalOpen ? modalIndex : editInGrid && gridEditIndex >= 0 ? gridEditIndex : selectedIndex;
+  const path = images[index];
+  const h = hist[path];
+  if (!h) return;
+  const from = dir < 0 ? h.undo : h.redo, to = dir < 0 ? h.redo : h.undo;
+  if (!from.length) { setStatus(dir < 0 ? 'Nothing to undo' : 'Nothing to redo'); return; }
+  to.push(h.last);
+  const s = from.pop();
+  const regions = JSON.parse(s);
+  imageCache[path].regions = JSON.parse(s);
+  h.applying = true;
+  scheduleAutoSave(path, regions);
+  h.applying = false;
+  h.last = s;
+  h.at = 0;
+  if (modalOpen) { modalRegions = regions; modalSelectedIdx = -1; renderModal(); renderModalRegionsList(); }
+  else {
+    if (gridEditIndex === index) { gridEditRegions = JSON.parse(s); gridEditSelectedIdx = -1; }
+    redrawGridCanvas(index);
+  }
+  setStatus((dir < 0 ? 'Undo' : 'Redo') + ` (${h.undo.length} / ${h.redo.length} left)`);
+}
+document.addEventListener('keydown', e => {
+  if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA') return;
+  const k = e.key.toLowerCase();
+  if (k !== 'z' && k !== 'y' && e.code !== 'KeyZ' && e.code !== 'KeyY') return;  // layout-independent (Cyrillic)
+  e.preventDefault(); e.stopImmediatePropagation();
+  histStep((k === 'y' || e.code === 'KeyY' || e.shiftKey) ? 1 : -1);
+}, true);
 
 // Cursor label follows mouse
 document.addEventListener('mousemove', e => {
@@ -5195,6 +5529,7 @@ document.getElementById('hotkey-input').addEventListener('keydown', e => {
   }
   togglePop('header');  // nothing loaded yet: show the loader
   try { if (localStorage.getItem('yoloLabelerNoSidebar')) toggleSidebar(true); } catch (e) {}
+  try { if (localStorage.getItem('yoloLabelerHideNotes')) { document.getElementById('show-notes').checked = false; toggleNotes(); } } catch (e) {}
   
   window.addEventListener('resize', () => {
     if (images.length > 0) renderGrid();

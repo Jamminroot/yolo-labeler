@@ -455,6 +455,49 @@ def smart_box(image_path: str, points: list, cls_id, model_path: str, use_model:
     return {"box": [(x1 + x2) / 2 / W, (y1 + y2) / 2 / H, (x2 - x1) / W, (y2 - y1) / H], "source": src, "conf": conf}
 
 
+SMART_GRID = 8  # SAM prompts per side of a hover region: 64 one-point prompts, decoded in chunks
+
+
+@serial
+def smart_region(image_path: str, pt: list, model_path: str, use_model: bool) -> dict:
+    """Hover cache for the client: everything a cursor in a square region around `pt` (normalized) may be suggested -
+    the model's proposals touching it (every class: the client filters) and SAM boxes of a grid of points over it."""
+    import torch
+    frame = cv2.imread(image_path)
+    if frame is None:
+        return {}
+    H, W = frame.shape[:2]
+    side = min(max(0.2 * min(W, H), 160), 400, W, H)  # px: a few elements around the cursor, not the whole table
+    rx1 = min(max(pt[0] * W - side / 2, 0), W - side)
+    ry1 = min(max(pt[1] * H - side / 2, 0), H - side)
+    rx2, ry2 = rx1 + side, ry1 + side
+    region = [rx1 / W, ry1 / H, rx2 / W, ry2 / H]
+    norm = lambda b: [(b[0] + b[2]) / 2 / W, (b[1] + b[3]) / 2 / H, (b[2] - b[0]) / W, (b[3] - b[1]) / H]
+    props = []
+    if use_model and model_path:
+        props = [{"cls": c[0], "conf": c[1], "box": norm(c[2:])} for c in model_proposals(image_path, model_path, frame)
+                 if c[2] < rx2 and c[4] > rx1 and c[3] < ry2 and c[5] > ry1]
+    n = SMART_GRID
+    pts = [(rx1 + (rx2 - rx1) * (i + 0.5) / n, ry1 + (ry2 - ry1) * (j + 0.5) / n) for j in range(n) for i in range(n)]
+    sam_box(image_path, frame, [pts[0]])  # loads SAM, embeds the frame once (cached for this image)
+    sam = []
+    for k in range(0, len(pts), 16):  # full-size masks: 16 at a time keeps GPU memory small
+        chunk = pts[k:k + 16]
+        r = _sam(points=[[list(p)] for p in chunk], labels=[[1]] * len(chunk))
+        if not r or r[0].masks is None:
+            continue
+        m = r[0].masks.data > 0.5
+        xs, ys = m.any(1), m.any(2)
+        for p, x, y in zip(chunk, xs, ys):
+            xi, yi = torch.nonzero(x).flatten(), torch.nonzero(y).flatten()
+            if not len(xi):
+                continue
+            b = (float(xi[0]), float(yi[0]), float(xi[-1] + 1), float(yi[-1] + 1))
+            if (b[2] - b[0]) * (b[3] - b[1]) <= 0.5 * W * H:  # bigger: the point grabbed the background
+                sam.append({"pt": [p[0] / W, p[1] / H], "box": norm(b)})
+    return {"region": region, "step": [(rx2 - rx1) / n / W, (ry2 - ry1) / n / H], "proposals": props, "sam": sam}
+
+
 # ---- F1: read the text of a box (PP-OCRv5 recognizers, one per script; the most confident reading wins) ----
 OCR_MODELS = ("PP-OCRv5_server_rec", "latin_PP-OCRv5_mobile_rec", "cyrillic_PP-OCRv5_mobile_rec", "korean_PP-OCRv5_mobile_rec")
 _ocr = {}
@@ -762,6 +805,20 @@ class YoloLabelHandler(SimpleHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(json.dumps({"regions": regions}).encode())
 
+        elif parsed.path == "/notes":
+            # <dataset>/notes.tsv: one note per line, "file<TAB>text" (a file may have several); written by scripts
+            f = Path(parse_qs(parsed.query).get("base", [""])[0]) / "notes.tsv"
+            notes = {}
+            if f.exists():
+                for line in f.read_text(encoding="utf-8", errors="replace").splitlines():
+                    name, _, text = line.partition("	")
+                    if name.strip() and text.strip():
+                        notes.setdefault(Path(name.strip()).stem.lower(), []).append(text.strip())
+            self.send_response(200)
+            self.send_header("Content-type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps({"notes": notes, "file": str(f)}, ensure_ascii=False).encode())
+
         elif parsed.path == "/constraints":
             f = level_rules_file(parse_qs(parsed.query).get("base", [""])[0])
             rules = None
@@ -834,6 +891,21 @@ class YoloLabelHandler(SimpleHTTPRequestHandler):
             self.send_header("Content-type", "application/json")
             self.end_headers()
             self.wfile.write(json.dumps(out, ensure_ascii=False).encode("utf-8"))
+            return
+
+        if self.path == "/smart_region":
+            # {path, pt: [x, y] normalized, model, use_model} -> {region, step, proposals, sam} | {}
+            length = int(self.headers.get("Content-Length", 0))
+            data = json.loads(self.rfile.read(length))
+            try:
+                out = smart_region(data["path"], data["pt"], data.get("model") or "", bool(data.get("use_model", True)))
+            except Exception as e:  # never kill the server over a helper
+                print("smart region failed:", e)
+                out = {"error": str(e)}
+            self.send_response(200)
+            self.send_header("Content-type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(out).encode())
             return
 
         if self.path == "/smart":
