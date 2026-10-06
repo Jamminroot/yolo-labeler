@@ -806,14 +806,24 @@ class YoloLabelHandler(SimpleHTTPRequestHandler):
             self.wfile.write(json.dumps({"regions": regions}).encode())
 
         elif parsed.path == "/notes":
-            # <dataset>/notes.tsv: one note per line, "file<TAB>text" (a file may have several); written by scripts
+            # <dataset>/notes.tsv: one note per line, "file<TAB>text[<TAB>json]" (a file may have several); written by
+            # scripts. json (optional): {"tag": short pill label, "boxes": [[cx, cy, w, h], ...] normalized} - what the
+            # note is about, highlighted on hover. -> {stem: [{text, tag?, boxes?}]}
             f = Path(parse_qs(parsed.query).get("base", [""])[0]) / "notes.tsv"
             notes = {}
             if f.exists():
                 for line in f.read_text(encoding="utf-8", errors="replace").splitlines():
-                    name, _, text = line.partition("	")
-                    if name.strip() and text.strip():
-                        notes.setdefault(Path(name.strip()).stem.lower(), []).append(text.strip())
+                    name, _, rest = line.partition("	")
+                    text, _, extra = rest.partition("	")
+                    if not (name.strip() and text.strip()):
+                        continue
+                    note = {"text": text.strip()}
+                    if extra.strip():
+                        try:
+                            note.update({k: v for k, v in json.loads(extra).items() if k in ("tag", "boxes")})
+                        except (json.JSONDecodeError, AttributeError):
+                            pass
+                    notes.setdefault(Path(name.strip()).stem.lower(), []).append(note)
             self.send_response(200)
             self.send_header("Content-type", "application/json")
             self.end_headers()
@@ -918,6 +928,23 @@ class YoloLabelHandler(SimpleHTTPRequestHandler):
             except Exception as e:  # never kill the server over a helper
                 print("smart box failed:", e)
                 out = {"error": str(e)}
+            self.send_response(200)
+            self.send_header("Content-type", "application/json")
+            self.end_headers()
+            self.wfile.write(json.dumps(out).encode())
+            return
+
+        if self.path == "/image_sizes":
+            # {images:[...]} -> {path: [w, h] | null}; header read only
+            from PIL import Image
+            length = int(self.headers.get("Content-Length", 0))
+            out = {}
+            for image_path in json.loads(self.rfile.read(length)).get("images", []):
+                try:
+                    with Image.open(image_path) as im:
+                        out[image_path] = list(im.size)
+                except Exception:
+                    out[image_path] = None
             self.send_response(200)
             self.send_header("Content-type", "application/json")
             self.end_headers()

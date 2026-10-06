@@ -57,7 +57,100 @@ body { font-family: system-ui, sans-serif; background: #1c1c1e; color: #eee; hei
 
 .grid-item-footer { background: #111; padding: 4px 6px; }
 .grid-item-footer-top { display: flex; align-items: center; gap: 6px; }
-.grid-item-notes { font-size: 10px; color: #ffd27a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+.grid-item-notes { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 3px; }
+.npill { font-size: 9px; line-height: 13px; padding: 0 6px; border-radius: 8px; white-space: nowrap; max-width: 140px; overflow: hidden;
+         text-overflow: ellipsis; background: #2a2a2a; color: #ddd; border: 1px solid #444; cursor: default; }
+.npill.check1 { background: #5a1414; border-color: #ff5252; color: #ffd0d0; font-weight: bold; }
+.npill.check2 { background: #4a3010; border-color: #ff9f40; color: #ffe0c0; font-weight: bold; }
+.npill.check3 { background: #3e3a12; border-color: #e0c040; color: #fff2b0; }
+.npill.model { background: #12304a; border-color: #4aa3ff; color: #cfe6ff; }
+.npill.ocr { background: #2c1a40; border-color: #b47cff; color: #ead8ff; }
+.npill:hover { filter: brightness(1.4); }
+.npill, .cpill { cursor: pointer; }
+.npill.done { opacity: 0.35; text-decoration: line-through; }
+#qf { position: fixed; inset: 0; z-index: 9000; background: #050505; display: none; flex-direction: column; }
+#qf.open { display: flex; }
+body.qf-split #qf { right: auto; width: 30vw; }
+body.qf-split #modal-overlay { left: calc(30vw + 500px); z-index: 9001; background: #0a0a0a; }
+#qf-mid { position: fixed; top: 0; bottom: 0; left: 30vw; width: 500px; z-index: 9002; background: #0b0b0b; border-left: 1px solid #222;
+          border-right: 1px solid #222; display: none; gap: 8px; padding: 44px 8px 8px; box-sizing: border-box; align-items: flex-start; }
+body.qf-split #qf-mid { display: flex; }
+#qf-zoom { border: 2px solid #444; border-radius: 6px; background: #000; flex: none; }
+#qf-zcol { display: flex; flex-direction: column; gap: 8px; flex: none; width: 264px; max-height: 100%; overflow-y: auto; }
+#qf-outcomes { display: flex; flex-direction: column; gap: 8px; }
+.qf-out { display: flex; gap: 6px; align-items: flex-start; border: 2px solid #333; border-radius: 6px; padding: 4px; cursor: pointer; }
+.qf-out:hover { border-color: #888; }
+.qf-out.bad { border-color: #ff5252; animation: qfblink .6s ease-in-out infinite; }
+@keyframes qfblink { 50% { box-shadow: 0 0 0 4px rgba(255,82,82,.75); border-color: #ffb0b0; } }
+.qf-out kbd { min-width: 34px; height: 34px; border-radius: 7px; display: flex; align-items: center; justify-content: center;
+              font: bold 17px sans-serif; color: #000; flex: none; box-shadow: 0 0 10px rgba(255,255,255,.15); }
+.qf-out .qf-ob { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.qf-out .qf-pill { font-size: 12px; font-weight: bold; padding: 1px 8px; border-radius: 9px; align-self: flex-start; }
+.qf-out .qf-warn { font-size: 10px; color: #ff8080; }
+#qf-mid-ask { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+#qf-rcol { display: flex; flex-direction: column; gap: 10px; flex: 1; min-width: 0; max-height: 100%; overflow-y: auto; }
+#qf-mid-ask button { background: #1e1e1e; color: #eee; border: 1px solid #555; border-radius: 5px; padding: 4px 9px; font-size: 13px;
+                     cursor: pointer; text-align: left; }
+#qf-mid-ask button:hover { background: #2f4f6f; }
+#qf-mid-ask button.main { border-color: #4ade80; }
+#qf-mid-ask .qf-ask { font-size: 17px; font-weight: bold; color: #fff; }
+#qf-mid-ask .qf-ask small { display: block; font-size: 11px; font-weight: normal; color: #aaa; }
+#qf-mid-ask .qf-name { font-size: 13px; font-weight: bold; padding: 2px 9px; border-radius: 5px; align-self: flex-start; }
+body.qf-split #modal { max-width: 100%; max-height: 100vh; width: 100%; height: 100%; border-radius: 0; }
+/* the editor next to Quick Fix: the picture fits both ways, no scrollbars (their coming and going made it jump) */
+body.qf-split #modal-body { min-height: 0; }
+body.qf-split #modal-canvas-container { overflow: hidden; min-width: 0; min-height: 0; }
+body.qf-split #modal-canvas { max-width: 100%; max-height: 100%; width: auto; height: auto; object-fit: contain; }
+#qf-top { display: flex; gap: 14px; align-items: center; padding: 6px 12px; color: #999; font-size: 12px; border-bottom: 1px solid #222; }
+#qf-top b { color: #ddd; }
+#qf-bar { flex: 1; height: 4px; background: #222; border-radius: 2px; overflow: hidden; }
+#qf-bar div { height: 100%; background: #4ade80; width: 0; }
+#qf-classes { display: flex; flex-direction: column; gap: 4px; padding-top: 6px; border-top: 1px solid #222; }
+.qf-cl { display: grid; grid-template-columns: 100px 1fr 56px; gap: 6px; align-items: center; font-size: 11px; color: #888; }
+.qf-cl span:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+.qf-cl .b { height: 5px; background: #222; border-radius: 3px; overflow: hidden; }
+.qf-cl .b div { height: 100%; }
+.qf-cl.cur { color: #fff; font-weight: bold; }
+.qf-cl.cur .b { height: 9px; box-shadow: 0 0 0 1px #666; }
+.qf-cl.end { opacity: .45; }
+.qf-cl { cursor: pointer; }
+.qf-cl:hover { color: #ddd; }
+.qf-cats { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 0 4px 8px; }
+.qf-cats button { background: #1a1a1a; color: #aaa; border: 1px solid #444; border-radius: 9px; padding: 1px 8px; font-size: 11px; cursor: pointer; }
+.qf-cats button.on { background: #2f4f6f; color: #fff; border-color: #6fa8dc; }
+.qf-cats button:hover { border-color: #888; }
+#qf-stage { flex: 1; position: relative; min-height: 0; }
+#qf-canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+#qf-ask { padding: 10px 14px 14px; display: flex; flex-direction: column; align-items: center; gap: 8px; border-top: 1px solid #222; }
+#qf-q { font-size: 26px; font-weight: bold; color: #fff; }
+#qf-q small { font-size: 13px; color: #888; font-weight: normal; margin-left: 10px; }
+#qf-opts { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; max-width: 95vw; }
+#qf-opts button { background: #1e1e1e; color: #eee; border: 1px solid #444; border-radius: 6px; padding: 6px 14px; font-size: 15px; cursor: pointer; }
+#qf-opts button.main { border-color: #4ade80; }
+#qf-opts button.cls { font-size: 12px; padding: 3px 8px; }
+#qf-opts button kbd { color: #888; font-size: 11px; margin-left: 6px; }
+#qf-opts button:hover { background: #2f4f6f; }
+#qf-help { color: #666; font-size: 11px; text-align: center; }
+#qf-cat { font-size: 12px; color: #bbb; background: #1e1e1e; border: 1px solid #444; border-radius: 10px; padding: 1px 9px; }
+#qf-float { position: absolute; display: flex; flex-direction: column; gap: 3px; z-index: 2; }
+#qf-float button { background: rgba(20,20,20,.88); color: #eee; border: 1px solid #555; border-radius: 5px; padding: 3px 9px; font-size: 13px;
+                   cursor: pointer; text-align: left; white-space: nowrap; }
+#qf-float button:hover { background: #2f4f6f; }
+#qf-float button.main { border-color: #4ade80; }
+#qf-float .qf-ask { font-size: 15px; font-weight: bold; color: #fff; text-shadow: 0 1px 3px #000, 0 0 6px #000; white-space: nowrap; }
+#qf-float .qf-ask small { display: block; font-size: 11px; font-weight: normal; color: #ccc; max-width: 260px; white-space: normal; }
+#qf-float .qf-name { font-size: 13px; font-weight: bold; padding: 2px 9px; border-radius: 5px; color: #000; align-self: flex-start; }
+#fix-menu { position: fixed; z-index: 9999; background: #1b1b1b; border: 1px solid #555; border-radius: 6px; padding: 3px;
+            display: none; flex-direction: column; min-width: 150px; box-shadow: 0 4px 16px rgba(0,0,0,.6); font-size: 12px; }
+#fix-menu button { background: transparent; color: #ddd; border: 0; text-align: left; padding: 4px 8px; border-radius: 4px; cursor: pointer; }
+#fix-menu button:hover { background: #2f4f6f; color: #fff; }
+#fix-menu .fix-accept { color: #9ad19a; }
+details.side-sec { margin-top: 4px; }
+details.side-sec > summary { cursor: pointer; font-size: 13px; font-weight: bold; color: #ccc; padding: 4px 0; list-style: none; user-select: none; }
+details.side-sec > summary::-webkit-details-marker { display: none; }
+details.side-sec > summary::before { content: '▸ '; color: #888; }
+details.side-sec[open] > summary::before { content: '▾ '; }
+details.side-sec > summary span { font-weight: normal; color: #777; font-size: 11px; }
 body.hide-notes .grid-item-notes { display: none; }
 .grid-item-name { font-size: 10px; color: #888; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; position: relative; }
 .grid-item-name .cpills { position: absolute; right: 0; top: 50%; transform: translateY(-50%); display: flex; gap: 3px; }
@@ -368,14 +461,18 @@ body.no-sidebar #sidebar { display: none; }
   </div>
   <button class="btn btn-sm btn-secondary" onclick="detectPage()" title="Shift+R: run the model on every card of the page (only classes checked in column D); results stay unsaved until Save Page">Detect Page</button>
   <button class="btn btn-sm" onclick="saveAllOnPage()" title="Save every card of this page">Save Page</button>
+  <div style="display:flex;gap:3px;align-items:center;font-size:11px;" title="One question at a time over the filtered images: Y / N, a class key, Space skips, Backspace goes back, Esc closes">
+    Quick Fix: <button class="btn btn-sm btn-secondary" onclick="qfOpen('constraints')">Constraints</button><button class="btn btn-sm btn-secondary" onclick="qfOpen('notes')">Notes</button><button class="btn btn-sm btn-secondary" onclick="qfOpen('all')">All</button>
+  </div>
     </div>
-    <h3>Classes (click key to edit)</h3>
+    <details class="side-sec" data-sec="classes" open><summary>Classes <span>(click key to edit)</span></summary>
     <div id="class-buttons"></div>
     <button id="add-class-btn" class="btn btn-sm" onclick="showAddClassPrompt()" style="width:100%;margin:8px 0;">+ Add Class</button>
     <label style="font-size:11px;" title="With a class selected: the box under the cursor is suggested (dashed) - click takes it; a stroke over the object makes its box. Our model's proposals of that class first, SAM otherwise"><input type="checkbox" id="smart-mode" onchange="smartChanged()"> ✨ smart boxes</label>
     <label style="font-size:11px;" title="Suggest the model's low-confidence boxes of the selected class before SAM (needs Model path)"><input type="checkbox" id="smart-model" checked onchange="saveSettings()"> model hints first</label>
     <label style="font-size:11px;" title="A smart-box stroke replaces the boxes of the same class it crosses (60%+ of their width or height): a fan of slivers becomes one box"><input type="checkbox" id="smart-overwrite" checked onchange="saveSettings()"> Overwrite with smart box draw</label>
-    <h3 style="margin-top:6px" id="constraints-title" title="Shared by every dataset of this level">Constraints</h3>
+    </details>
+    <details class="side-sec" data-sec="constraints" open><summary id="constraints-title" title="Shared by every dataset of this level">Constraints</summary>
     <label style="font-size:11px;" title="Outline the boxes breaking any enabled rule on the card under the cursor (hold Tab; Shift+Tab keeps it on)"><input type="checkbox" id="show-violations" onchange="violationsToggled = this.checked; setAllConstraints(this.checked); this.blur()"> highlight violations <span style="color:#777">(Tab)</span></label>
     <label style="font-size:11px;" title="Filter: frames breaking any enabled constraint (the counter on a rule filters by that rule)"><input type="checkbox" id="only-broken" onchange="filterBroken(this.checked ? '' : null)"> only frames breaking a rule</label>
     <datalist id="constraint-classes"></datalist>
@@ -386,9 +483,27 @@ body.no-sidebar #sidebar { display: none; }
       <button class="btn btn-sm btn-secondary" onclick="document.getElementById('constraints-import').click()" title="Load rules from a .json file: same name replaces, new ones are added">Import</button>
     </div>
     <input type="file" id="constraints-import" accept=".json,application/json" style="display:none" onchange="importConstraints(this)">
+    </details>
+    <details class="side-sec" data-sec="notes" open><summary>Notes <span id="note-total"></span></summary>
+      <div style="display:flex;flex-direction:column;gap:4px;font-size:12px;">
+        <label style="font-size:11px;" title="Outline what the notes of the card under the cursor are about (hold \; Shift+\ keeps it on). One note: hover its pill"><input type="checkbox" id="show-note-marks" onchange="notesToggled = this.checked; setAllNotes(this.checked); this.blur()"> highlight notes <span style="color:#777">(\)</span></label>
+        <label style="font-size:11px;" title="the dataset's notes.tsv on the grid items"><input type="checkbox" id="show-notes" checked onchange="toggleNotes()"> show note pills</label>
+        <select id="note-mode" title="images with / without a matching note" onchange="applyFilter()"><option value="">— no note filter —</option><option value="any">with a note</option><option value="none">without a note</option></select>
+        <select id="note-pick" title="one exact note, or any" onchange="applyFilter()"><option value="">any note</option></select>
+        <input id="note-words" placeholder="words: a b, c" title="all words of a group, any group (comma): e.g. CHECK1 / unsure, disagrees" onchange="applyFilter()">
+        <span id="note-count" style="color:#777;font-size:11px;"></span>
+      </div>
+    </details>
   </div>
 </div>
 
+<div id="fix-menu" onmouseleave="fixMenuLeave()"></div>
+<div id="qf-mid"><div id="qf-zcol"><canvas id="qf-zoom" width="260" height="260"></canvas><div id="qf-outcomes"></div></div><div id="qf-rcol"><div id="qf-mid-ask"></div><div id="qf-classes"></div></div></div>
+<div id="qf">
+  <div id="qf-top"><b id="qf-mode"></b><span id="qf-pos"></span><div id="qf-bar"><div></div></div><span id="qf-stats"></span><span id="qf-file" style="max-width:35vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></span><button class="btn btn-sm btn-secondary" onclick="qfClose()">Esc ✕</button></div>
+  <div id="qf-stage"><canvas id="qf-canvas"></canvas><div id="qf-float"></div></div>
+  <div id="qf-ask"><span id="qf-cat"></span><div id="qf-q"></div><div id="qf-opts"></div><div id="qf-help">Y / Enter yes · N / Del no · M the model's box · class key: that class · Space skip · Backspace back · Tab / Shift+Tab category · PgDn / PgUp class · Esc close<br>the editor on the right: the cursor over it - its keys, as in the grid</div></div>
+</div>
 <div id="status-bar">Load a dataset yaml to begin</div>
 <div id="cursor-label"></div>
 <div id="zoom-window"><canvas width="220" height="220"></canvas></div>
@@ -399,19 +514,12 @@ body.no-sidebar #sidebar { display: none; }
       <span>Filter</span>
       <button class="popup-close" onclick="toggleFilterPopup()">×</button>
     </div>
-    <div style="font-size:12px;color:#aaa;margin-bottom:4px;">Notes (the dataset's notes.tsv)</div>
-    <div style="display:flex;gap:4px;align-items:center;margin-bottom:10px;font-size:12px;flex-wrap:wrap;">
-      <select id="note-mode" title="images with / without a matching note"><option value="">— no note filter —</option><option value="any">with a note</option><option value="none">without a note</option></select>
-      <select id="note-pick" title="one exact note, or any" style="max-width:190px;"><option value="">any note</option></select>
-      <input id="note-words" placeholder="words: a b, c" title="all words of a group, any group (comma): e.g. fixed / number / unusual / unsure, disagrees" style="width:120px;">
-      <span id="note-count" style="color:#777;"></span>
-    </div>
+    <div style="font-size:12px;color:#777;margin-bottom:8px;">Note filter: sidebar → Notes</div>
     <div style="font-size:12px;color:#aaa;margin-bottom:4px;">Class rules (all must pass)</div>
     <div id="rule-list" style="display:flex;flex-direction:column;gap:4px;margin-bottom:6px;"></div>
     <div style="display:flex;gap:6px;margin-bottom:10px;">
       <button class="btn btn-sm btn-secondary" onclick="addRule()">+ Rule</button>
       <span style="font-size:11px;color:#777;align-self:center;">has A · lacks A · A overlaps B · no labels · unlabeled file · notes</span>
-      <label style="font-size:11px;color:#aaa;align-self:center;margin-left:auto;" title="the dataset's notes.tsv on the grid items"><input type="checkbox" id="show-notes" checked onchange="toggleNotes()"> Show notes</label>
     </div>
     <div style="font-size:12px;color:#aaa;margin-bottom:4px;">Filenames (optional, one per line, substring match)</div>
     <textarea id="filter-names" placeholder="Enter filenames (one per line)&#10;Matches by substring in filename" rows="6" style="width:100%;background:#0a0a0a;color:#fff;border:1px solid #333;border-radius:3px;font-size:12px;resize:vertical;font-family:monospace;padding:8px;box-sizing:border-box;"></textarea>
@@ -1530,8 +1638,16 @@ function setConstraintFocus(rule, regions = null) {
 // (the open image in the modal; every card when the cursor is on none). A hovered rule still shows alone.
 let showAllConstraints = false, hoveredCard = -1;
 let violationsToggled = false;  // Shift+Tab / the checkbox; a held Tab shows them on top of this
-document.addEventListener('keyup', e => { if (e.key === 'Tab' && !violationsToggled) setAllConstraints(false); });
-window.addEventListener('blur', () => { if (!violationsToggled) setAllConstraints(false); });
+document.addEventListener('keyup', e => {
+  if (e.key === 'Tab' && !violationsToggled) setAllConstraints(false);
+  if (e.code === 'Backslash' && !notesToggled) setAllNotes(false);
+});
+window.addEventListener('blur', () => { if (!violationsToggled) setAllConstraints(false); if (!notesToggled) setAllNotes(false); });
+// sidebar sections: open / closed remembered
+document.querySelectorAll('details.side-sec').forEach(d => {
+  try { const v = localStorage.getItem('yoloLabelerSec:' + d.dataset.sec); if (v !== null) d.open = v === '1'; } catch (e) {}
+  d.addEventListener('toggle', () => { try { localStorage.setItem('yoloLabelerSec:' + d.dataset.sec, d.open ? '1' : '0'); } catch (e) {} });
+});
 function setAllConstraints(on) {
   if (showAllConstraints === on) return;
   showAllConstraints = on;
@@ -1602,9 +1718,15 @@ function updateConstraintPills(index, regions) {
       pill.style.color = getContrastColor(c.color || '#ff5252');
       pill.textContent = n > 1 ? `${c.name} ×${n}` : c.name;
       const acked = isAcked(images[index], c);
-      pill.title = acked ? 'accepted for this image (click to undo)' : `${c.type}: ${n} offending box(es) - click: accept (a legit case)`;
+      pill.title = acked ? 'accepted for this image (click to undo)' : `${c.type}: ${n} offending box(es) - click: delete one (hover previews) or accept`;
       if (acked) { pill.style.opacity = '0.35'; pill.style.textDecoration = 'line-through'; }
-      pill.onclick = e => { e.stopPropagation(); toggleAck(images[index], c); el.dataset.key = ''; updateConstraintPills(index); updateConstraintHits(); };
+      pill.onclick = e => {
+        e.stopPropagation();
+        const ack = () => { toggleAck(images[index], c); el.dataset.key = ''; updateConstraintPills(index); updateConstraintHits(); };
+        const fixes = acked ? [] : ruleFixes(c, cardRegions(index) || []);
+        if (!fixes.length) { ack(); return; }
+        openFixMenu(e, index, [...fixes, { label: '✓ accept (a legit case)', accept: true, run: ack }]);
+      };
       pill.onmouseenter = () => {
         const i = index, cached = imageCache[images[i]];
         setConstraintFocus(c, editInGrid && gridEditIndex === i ? gridEditRegions : cached?.regions);
@@ -1624,19 +1746,222 @@ function addConstraint() {
 }
 // ---- notes: <dataset>/notes.tsv ("file<TAB>text" per line, several per file), written by scripts; shown on the
 // grid items (toggle) and filterable (rules "has note" / "no note": any, one exact note, words)
-let notes = {};  // image stem (lower case) -> [text]
+let notes = {};  // image stem (lower case) -> [{text, tag?, boxes?}] (notes.tsv: file<TAB>text[<TAB>json])
 async function loadNotes() {
   notes = {};
   try { notes = (await (await fetch(`/notes?base=${encodeURIComponent(datasetBase)}`)).json()).notes || {}; } catch (e) {}
+  for (const k in notes) notes[k] = notes[k].map(n => typeof n === 'string' ? { text: n } : n);  // an older server: texts
   const n = Object.values(notes).reduce((a, v) => a + v.length, 0);
+  const tot = document.getElementById('note-total');
+  if (tot) tot.textContent = n ? `${n} on ${Object.keys(notes).length}` : '';
   if (n) setStatus(`Notes: ${n} on ${Object.keys(notes).length} images`);
+  renderNotePick();  // the sidebar's note list
 }
 function notesOf(path) { return notes[path.split(/[/\\]/).pop().replace(/\.[^.]+$/, '').toLowerCase()] || []; }
-function noteTexts() { return [...new Set(Object.values(notes).flat())].sort(); }
+function noteTexts() { return [...new Set(Object.values(notes).flat().map(n => n.text))].sort(); }
+// short pill label: the note's tag, else a compact form of the text (the full text is the pill's tooltip)
+function noteLabel(n) {
+  if (n.tag) return n.tag;
+  const t = n.text; let m;
+  if ((m = t.match(/^(CHECK\d)/))) return m[1];
+  if ((m = t.match(/^missing\? model sees (\S+)/))) return '+' + m[1] + '?';
+  if ((m = t.match(/^model unsure: (\S+)/))) return m[1] + '?';
+  if ((m = t.match(/^class\? labeled (\S+), model sees (\S+)/))) return m[1] + '→' + m[2];
+  if ((m = t.match(/^model disagrees: (\S+)/))) return '−' + m[1];
+  if ((m = t.match(/^odd place for (\S+)/))) return 'odd ' + m[1];
+  if ((m = t.match(/^timebank at (\d+) seats/))) return 'timebank×' + m[1];
+  if (/^seat off the ring/.test(t)) return 'off ring';
+  if (/^fixed:/.test(t)) return 'fixed';
+  const c = t.replace(/'[^']*'/g, '…').replace(/\([^)]*\)/g, '').replace(/\s+/g, ' ').trim();
+  return c.length > 22 ? c.slice(0, 21) + '…' : c;
+}
+function noteKind(n) {
+  const m = n.text.match(/^CHECK(\d)/);
+  if (m) return 'check' + m[1];
+  if (/^(missing\?|model |class\?)/.test(n.text)) return 'model';
+  if (/'[^']*'/.test(n.text)) return 'ocr';
+  return '';
+}
 function noteMatches(list, r) {  // r.note: '' any / one exact text; r.words: "a b" all words, "a b, c" any group
+  list = list.map(n => n.text);
   const pool = r.note ? list.filter(t => t === r.note) : list;
   const groups = (r.words || '').toLowerCase().split(',').map(g => g.trim().split(/\s+/).filter(Boolean)).filter(g => g.length);
   return pool.some(t => !groups.length || groups.some(g => g.every(w => t.toLowerCase().includes(w))));
+}
+// the regions a note is about: the labeled ones under its boxes, else those of the classes it names
+function boxIou(a, b) {
+  const ax1 = a[0] - a[2] / 2, ay1 = a[1] - a[3] / 2, bx1 = b[0] - b[2] / 2, by1 = b[1] - b[3] / 2;
+  const ix = Math.max(0, Math.min(ax1 + a[2], bx1 + b[2]) - Math.max(ax1, bx1)), iy = Math.max(0, Math.min(ay1 + a[3], by1 + b[3]) - Math.max(ay1, by1));
+  const u = a[2] * a[3] + b[2] * b[3] - ix * iy;
+  return u > 0 ? ix * iy / u : 0;
+}
+function noteRegions(n, regions) {
+  if (n.boxes && n.boxes.length) return regions.filter(r => n.boxes.some(b => boxIou(r.box, b) > 0.3));
+  const names = new Set(Object.values(classNames));
+  const cls = new Set((n.text.match(/[a-z_]+/g) || []).filter(w => names.has(w)));
+  return regions.filter(r => cls.has(r.class));
+}
+function newRegion(cls, box) {
+  const id = Object.entries(classNames).find(([k, v]) => v === cls)?.[0];
+  return { class: cls, class_id: id !== undefined ? parseInt(id) : -1, box: [...box] };
+}
+const ordinal = (regions, r) => {  // "#k" among the boxes of its class, left to right
+  const same = regions.filter(x => x.class === r.class).sort((a, b) => a.box[0] - b.box[0]);
+  return same.length > 1 ? ` #${same.indexOf(r) + 1}` : '';
+};
+// a note's fixes: [{label, apply(regions) -> new regions}]
+function noteFixes(n, regions) {
+  const t = n.text, b = (n.boxes || [])[0]; let m;
+  const best = (cls, box) => regions.filter(r => r.class === cls).sort((x, y) => boxIou(y.box, box) - boxIou(x.box, box))[0];
+  if (b && (m = t.match(/^(?:missing\? model sees|model unsure:) (\S+)/)))
+    return [{ label: `add ${m[1]}`, apply: rs => [...rs, newRegion(m[1], b)] }];
+  if (b && (m = t.match(/^class\? labeled (\S+), model sees (\S+)/))) {
+    const r = best(m[1], b);
+    if (r) return [{ label: `${m[1]} → ${m[2]}`, apply: rs => rs.map(x => x === r ? newRegion(m[2], x.box) : x) }];
+  }
+  if (b && (m = t.match(/^model disagrees: (\S+)/))) {
+    const r = best(m[1], b);
+    if (r) return [{ label: `delete ${m[1]}`, apply: rs => rs.filter(x => x !== r) }];
+  }
+  if ((m = t.match(/^odd place for (\S+) at (\d?\.\d+),\s*(\d?\.\d+)/))) {
+    const pt = [parseFloat(m[2]), parseFloat(m[3]), 0.01, 0.01];
+    const r = regions.filter(x => x.class === m[1]).sort((x, y) => Math.hypot(x.box[0] - pt[0], x.box[1] - pt[1]) - Math.hypot(y.box[0] - pt[0], y.box[1] - pt[1]))[0];
+    if (r) return [{ label: `delete ${m[1]}`, apply: rs => rs.filter(x => x !== r) }];
+  }
+  if (/^timebank at \d+ seats/.test(t))
+    return regions.filter(r => r.class === 'timebank').map(r => ({ label: `delete timebank${ordinal(regions, r)}`, apply: rs => rs.filter(x => x !== r) }));
+  return [];
+}
+// a rule's fixes: drop one of its offending boxes
+function ruleFixes(rule, regions) {
+  return constraintOffenders(rule, regions).boxes.map(r => ({ label: `delete ${r.class}${ordinal(regions, r)}`, apply: rs => rs.filter(x => x !== r) }));
+}
+// done notes (fixed or accepted): {image stem: [note texts]}, per browser
+let noteDone = {};
+try { noteDone = JSON.parse(localStorage.getItem('yoloLabelerNoteDone') || '{}'); } catch (e) {}
+const isNoteDone = (path, n) => (noteDone[stemOf(path)] || []).includes(n.text);
+function setNoteDone(path, n, on) {
+  const k = stemOf(path), l = (noteDone[k] || []).filter(x => x !== n.text);
+  if (on) l.push(n.text);
+  if (l.length) noteDone[k] = l; else delete noteDone[k];
+  try { localStorage.setItem('yoloLabelerNoteDone', JSON.stringify(noteDone)); } catch (e) {}
+}
+let fixPreview = null, fixMenuTimer = null;
+function applyFix(index, fix) {
+  const path = images[index];
+  const regions = fix.apply(cardRegions(index) || []).map(r => ({ ...r, box: [...r.box] }));
+  imageCache[path].regions = regions;
+  if (editInGrid && gridEditIndex === index) { gridEditRegions = JSON.parse(JSON.stringify(regions)); gridEditSelectedIdx = -1; }
+  scheduleAutoSave(path, regions);  // saved, and one Ctrl+Z step
+  fixPreview = null;
+  redrawGridCanvas(index);
+  setStatus(`Fixed: ${fix.label} (Ctrl+Z undoes)`);
+}
+function closeFixMenu() {
+  const m = document.getElementById('fix-menu');
+  m.style.display = 'none';
+  if (fixPreview) { const i = fixPreview.index; fixPreview = null; redrawGridCanvas(i); }
+}
+function fixMenuLeave() { clearTimeout(fixMenuTimer); fixMenuTimer = setTimeout(closeFixMenu, 250); }
+// options: [{label, apply?, run?, accept?}] - apply: a change of the boxes (previewed on hover); run: anything else
+function openFixMenu(e, index, options) {
+  const m = document.getElementById('fix-menu');
+  clearTimeout(fixMenuTimer);
+  m.innerHTML = '';
+  for (const o of options) {
+    const b = document.createElement('button');
+    b.textContent = o.label;
+    if (o.accept) b.className = 'fix-accept';
+    b.onmouseenter = () => {
+      clearTimeout(fixMenuTimer);
+      fixPreview = o.apply ? { index, regions: o.apply(cardRegions(index) || []) } : null;
+      redrawGridCanvas(index);
+    };
+    b.onmouseleave = () => { if (fixPreview) { fixPreview = null; redrawGridCanvas(index); } };
+    b.onclick = ev => { ev.stopPropagation(); closeFixMenu(); if (o.apply) applyFix(index, o); if (o.run) o.run(); };
+    m.appendChild(b);
+  }
+  m.style.display = 'flex';
+  const r = e.target.getBoundingClientRect();
+  m.style.left = Math.min(window.innerWidth - 220, r.left) + 'px';
+  m.style.top = Math.min(window.innerHeight - 30 - 26 * options.length, r.bottom + 2) + 'px';
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeFixMenu(); });
+document.addEventListener('mousedown', e => { if (!e.target.closest('#fix-menu') && !e.target.closest('.npill,.cpill')) closeFixMenu(); });
+// a note pill: one fix - the click applies it; several - a menu (hover previews); none - the click accepts / un-accepts
+function notePillClick(e, index, n) {
+  e.stopPropagation();
+  const path = images[index], regions = cardRegions(index) || [];
+  const done = isNoteDone(path, n);
+  const fixes = done ? [] : noteFixes(n, regions);
+  const accept = { label: done ? '↺ not done' : '✓ accept (no change)', accept: true, run: () => { setNoteDone(path, n, !done); refreshNotePills(index); } };
+  if (fixes.length === 1 && !e.shiftKey) {
+    applyFix(index, fixes[0]); setNoteDone(path, n, true); refreshNotePills(index);
+    return;
+  }
+  if (!fixes.length) { accept.run(); return; }
+  openFixMenu(e, index, [...fixes.map(f => ({ ...f, run: () => { setNoteDone(path, n, true); refreshNotePills(index); } })), accept]);
+}
+function refreshNotePills(index) {
+  const el = document.querySelector(`.grid-item[data-index="${index}"] .grid-item-notes`);
+  if (!el) return;
+  const nts = notesOf(images[index]);
+  [...el.children].forEach((p, k) => p.classList.toggle('done', !!nts[k] && isNoteDone(images[index], nts[k])));
+}
+// a hovered pill: that note on its card; \ held / Shift+\: every note of the card under the cursor
+let noteFocus = null, showAllNotes = false, notesToggled = false;
+function setNoteFocus(f) { noteFocus = f; redrawAllGridCanvases(); if (modalOpen) renderModal(); }
+function setAllNotes(on) {
+  if (showAllNotes === on) return;
+  showAllNotes = on;
+  const cb = document.getElementById('show-note-marks'); if (cb) cb.checked = on;
+  if (hoveredCard >= 0 && !modalOpen) redrawGridCanvas(hoveredCard); else redrawAllGridCanvases();
+  if (modalOpen) renderModal();
+}
+function noteFocusFor(regions) {
+  if (noteFocus) return noteFocus.regions === regions ? noteFocus.notes : null;
+  if (!showAllNotes) return null;
+  if (modalOpen) return regions === modalRegions ? notesOf(images[modalIndex]) : null;
+  if (hoveredCard >= 0 && regions === cardRegions(hoveredCard)) return notesOf(images[hoveredCard]);
+  return null;
+}
+// what a note is about: its boxes; else the regions of the classes it names, and its 'at x,y' points
+function drawNoteFocus(ctx, regions, ox, oy, iw, ih, lineScale) {
+  const list = noteFocusFor(regions);
+  if (!list || !list.length) return false;
+  const names = new Set(Object.values(classNames));
+  const pulse = 0.5 + 0.5 * Math.sin(animationPhase * 0.8);
+  ctx.save();
+  // the boxes the notes are not about step back (~20%)
+  const about = new Set();
+  for (const n of list) for (const r of noteRegions(n, regions || [])) about.add(r);
+  ctx.fillStyle = '#000'; ctx.globalAlpha = 0.2;
+  for (const r of regions || []) if (!about.has(r)) {
+    const x = ox + (r.box[0] - r.box[2] / 2) * iw, y = oy + (r.box[1] - r.box[3] / 2) * ih;
+    ctx.fillRect(x - 2 * lineScale, y - 2 * lineScale, r.box[2] * iw + 4 * lineScale, r.box[3] * ih + 4 * lineScale);
+  }
+  ctx.setLineDash([5 * lineScale, 3 * lineScale]);
+  for (const n of list) {
+    const col = { check1: '#ff5252', check2: '#ff9f40', check3: '#e0c040', model: '#4aa3ff', ocr: '#b47cff' }[noteKind(n)] || '#ffd27a';
+    const rects = (n.boxes || []).map(b => [ox + (b[0] - b[2] / 2) * iw, oy + (b[1] - b[3] / 2) * ih, b[2] * iw, b[3] * ih]);
+    if (!rects.length) {
+      const cls = new Set((n.text.match(/[a-z_]+/g) || []).filter(w => names.has(w)));
+      for (const r of regions || []) if (cls.has(r.class))
+        rects.push([ox + (r.box[0] - r.box[2] / 2) * iw, oy + (r.box[1] - r.box[3] / 2) * ih, r.box[2] * iw, r.box[3] * ih]);
+    }
+    for (const [x, y, w, h] of rects) {
+      const p = 2 * lineScale;
+      ctx.globalAlpha = 0.6; ctx.lineWidth = 3.5 * lineScale; ctx.strokeStyle = '#000'; ctx.strokeRect(x - p, y - p, w + 2 * p, h + 2 * p);
+      ctx.globalAlpha = 0.7 + 0.3 * pulse; ctx.lineWidth = 2 * lineScale; ctx.strokeStyle = col; ctx.strokeRect(x - p, y - p, w + 2 * p, h + 2 * p);
+    }
+    for (const m of n.text.matchAll(/at (\d?\.\d+),\s*(\d?\.\d+)/g)) {
+      const cx = ox + parseFloat(m[1]) * iw, cy = oy + parseFloat(m[2]) * ih, r = 10 * lineScale;
+      ctx.globalAlpha = 0.6; ctx.lineWidth = 3.5 * lineScale; ctx.strokeStyle = '#000'; ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.stroke();
+      ctx.globalAlpha = 0.7 + 0.3 * pulse; ctx.lineWidth = 2 * lineScale; ctx.strokeStyle = col; ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.stroke();
+    }
+  }
+  ctx.restore();
+  return true;
 }
 function toggleNotes() {
   document.body.classList.toggle('hide-notes', !document.getElementById('show-notes').checked);
@@ -2472,8 +2797,19 @@ function createGridItem(index, w, h, fullWidthMode = false) {
   if (nts.length) {
     const nd = document.createElement('div');
     nd.className = 'grid-item-notes';
-    nd.textContent = nts.join(' · ');
-    nd.title = nts.join('\n');
+    for (const n of nts) {
+      const pill = document.createElement('span');
+      pill.className = 'npill ' + noteKind(n);
+      pill.textContent = noteLabel(n);
+      pill.title = n.text;
+      pill.onmouseenter = () => setNoteFocus({ regions: cardRegions(index), notes: [n] });
+      pill.onmouseleave = () => setNoteFocus(null);
+      pill.onclick = e => notePillClick(e, index, n);
+      if (isNoteDone(path, n)) pill.classList.add('done');
+      const nf = noteFixes(n, imageCache[path]?.regions || []);
+      pill.title = n.text + (nf.length === 1 ? `\nclick: ${nf[0].label} (Shift+click: options)` : nf.length ? '\nclick: fixes' : '\nclick: accept');
+      nd.appendChild(pill);
+    }
     footer.appendChild(nd);
   }
   
@@ -3015,38 +3351,19 @@ function redrawVisibleGridItems(animatedOnly = false) {
   }
 }
 
+// the pulse redraw: the same full-resolution canvas as renderModal (a resized canvas here made the picture jump
+// between the two sizes on every hover redraw)
 function renderModalCanvas() {
-  if (!modalOpen || modalIndex < 0) return;
-  const path = images[modalIndex];
-  if (!modalImg) return;
-  
-  const canvas = document.getElementById('modal-canvas');
-  const ctx = canvas.getContext('2d');
-  
-  // Calculate dimensions maintaining aspect ratio
-  const maxW = canvas.parentElement.clientWidth - 40;
-  const maxH = window.innerHeight - 200;
-  let w = modalImg.width, h = modalImg.height;
-  if (w > maxW) { h = h * maxW / w; w = maxW; }
-  if (h > maxH) { w = w * maxH / h; h = maxH; }
-  
-  canvas.width = w;
-  canvas.height = h;
-  ctx.drawImage(modalImg, 0, 0, w, h);
-  
-  drawRegions(ctx, modalRegions, 0, 0, w, h, true, modalSelectedIdx);
-  
-  // Refresh zoom window if visible
-  if (lastZoomEvent && zoomWindow.style.display === 'block') {
-    updateModalZoomWindow(lastZoomEvent);
-  }
+  if (!modalOpen || modalIndex < 0 || !modalImg) return;
+  renderModal();
+  if (lastZoomEvent && zoomWindow.style.display === 'block') updateModalZoomWindow(lastZoomEvent);
 }
 
 function drawRegions(ctx, regions, ox, oy, iw, ih, showHandles, selectedIdx = -1, lineScale = 1) {
   drawRegionsBase(ctx, regions, ox, oy, iw, ih, showHandles, selectedIdx, lineScale);
   if (overlapAreaMode()) drawOverlapAreas(ctx, findOverlapRects(regions), ox, oy, iw, ih, lineScale);
   drawSmart(ctx, regions, ox, oy, iw, ih, lineScale);
-  if (drawConstraintFocus(ctx, regions, ox, oy, iw, ih, lineScale)) {
+  if (drawConstraintFocus(ctx, regions, ox, oy, iw, ih, lineScale) | drawNoteFocus(ctx, regions, ox, oy, iw, ih, lineScale)) {
     lastDrawAnimated = true;
     if (!animationRunning) startAnimation();
   }
@@ -3837,9 +4154,10 @@ function redrawGridCanvas(index) {
   
   // Use correct regions based on whether this item is being edited
   const isEditing = editInGrid && gridEditIndex === index;
-  const regions = isEditing ? gridEditRegions : (cached.regions || []);
-  const selectedIdx = isEditing ? gridEditSelectedIdx : -1;
-  drawRegions(ctx, regions, coords.x, coords.y, coords.w, coords.h, isEditing, selectedIdx);
+  const preview = fixPreview && fixPreview.index === index ? fixPreview.regions : null;
+  const regions = preview || (isEditing ? gridEditRegions : (cached.regions || []));
+  const selectedIdx = isEditing && !preview ? gridEditSelectedIdx : -1;
+  drawRegions(ctx, regions, coords.x, coords.y, coords.w, coords.h, isEditing && !preview, selectedIdx);
   if (lastDrawAnimated) animatedGridItems.add(index); else animatedGridItems.delete(index);
   updateConstraintPills(index, regions);
   drawCountLeaders(item, canvas, ctx, regions, coords);
@@ -4975,7 +5293,7 @@ async function fetchLabelBoxes(paths) {
 function renderNotePick() {
   const sel = document.getElementById('note-pick'), cur = sel.value;
   const counts = {};
-  Object.values(notes).forEach(v => v.forEach(t => { counts[t] = (counts[t] || 0) + 1; }));
+  Object.values(notes).forEach(v => v.forEach(n => { counts[n.text] = (counts[n.text] || 0) + 1; }));
   sel.innerHTML = '<option value="">any note</option>' + noteTexts().map(t =>
     `<option value="${t.replace(/"/g, '&quot;')}" ${t === cur ? 'selected' : ''}>${(t.length > 50 ? t.slice(0, 50) + '…' : t).replace(/</g, '&lt;')} (${counts[t]})</option>`).join('');
   document.getElementById('note-count').textContent = `${Object.keys(notes).length} images have notes`;
@@ -5169,6 +5487,13 @@ document.addEventListener('keydown', e => {
   if (e.key === 'F1') {  // translate tool (OCR a dragged area) - the browser's help stays shut
     e.preventDefault();
     ocrSelected();
+    return;
+  }
+  if (e.code === 'Backslash' && !e.ctrlKey && !e.altKey && !e.metaKey) {  // \ held: what the notes are about; Shift+\: on / off
+    e.preventDefault();
+    if (e.repeat) return;
+    if (e.shiftKey) { notesToggled = !notesToggled; setAllNotes(notesToggled); }
+    else if (!notesToggled) setAllNotes(true);
     return;
   }
   if (e.key === 'Tab' && !e.ctrlKey && !e.altKey && !e.metaKey) {  // Tab held: rule violations; Shift+Tab: on / off
@@ -5445,6 +5770,498 @@ document.addEventListener('mouseup', e => {
   mmb = null;
 }, true);
 document.addEventListener('auxclick', e => { if (e.button === 1 && onImage(e)) e.preventDefault(); }, true);
+
+// ---- Quick Fix: the filtered images' notes / rule breaks, one question at a time ----
+// A question: {key, title, sub, box, dashed, target?, yes(rs)?, no(rs)?, cls?} - yes / no change the boxes (null: keep
+// as is); a question with a target box also takes a class key (that box becomes the class). Answers are saved at once;
+// Backspace restores the boxes the last answer changed and asks again.
+const qf = { mode: '', stages: [], si: 0, tot: {}, done: {}, ii: 0, answered: {}, hist: [], stats: { fixed: 0, kept: 0, skipped: 0 }, regions: {}, img: null, q: null };
+let qfSetting = false;
+// questions go class by class (the same question many times in a row), in a class by category
+const QF_CATS = ['missing', 'exists', 'class', 'rule'];
+const qfClassOf = q => q.target?.class || q.cls || '?';
+const qfPath = () => qf.stages[qf.si]?.paths[qf.ii];
+const qfInStage = (q, st) => st.rest || (qfClassOf(q) === st.cls && q.cat === st.cat);
+const qfStageQs = (pth, st) => qfQuestions(pth, qf.regions[pth]).filter(q => qfInStage(q, st));
+const qfBoxKey = r => r.class + ':' + r.box.map(v => v.toFixed(3)).join(',');
+function qfQuestions(path, regions) {
+  const qs = [], done = qf.answered[path] || new Set();
+  const best = (cls, box) => regions.filter(r => r.class === cls).sort((x, y) => boxIou(y.box, box) - boxIou(x.box, box))[0];
+  const keepOrDrop = (key, r, title, sub, cat = 'exists') => qs.push({ key, title, sub, cat, box: r.box, target: r, yes: null, no: rs => rs.filter(x => x !== r) });
+  if (qf.mode !== 'constraints') for (const n of notesOf(path)) {
+    if (isNoteDone(path, n)) continue;
+    const t = n.text, b = (n.boxes || [])[0], key = 'n:' + t; let m;
+    if (b && (m = t.match(/^(?:missing\? model sees|model unsure:) (\S+)/))) {
+      // the same class labeled about there (the model's box a bit off): not a gap - is the labeled box right?
+      let near = regions.filter(r => r.class === m[1] && (boxIou(r.box, b) >= 0.25
+        || Math.abs(r.box[0] - b[0]) < r.box[2] / 2 && Math.abs(r.box[1] - b[1]) < r.box[3] / 2))
+        .sort((x, y) => boxIou(y.box, b) - boxIou(x.box, b))[0];
+      if (near) {
+        qs.push({ key, title: `Keep ${m[1]}?`, sub: "the model's box is a bit off (M: take it)", cat: 'exists', box: near.box, target: near,
+                  yes: null, no: rs => rs.filter(x => x !== near), model: rs => rs.map(x => x === near ? newRegion(m[1], b) : x), modelBox: b, note: n });
+      } else if ((near = regions.filter(r => r.class !== m[1] && boxIou(r.box, b) >= 0.5).sort((x, y) => boxIou(y.box, b) - boxIou(x.box, b))[0])) {
+        // labeled there as another class (seat_empty where the model sees seat): which one - or both
+        const o = near;
+        qs.push({ key, title: 'Class?', sub: `labeled ${o.class}, the model sees ${m[1]}`, cat: 'class', box: o.box, target: o, suggest: m[1], note: n,
+                  yes: rs => rs.map(x => x === o ? newRegion(m[1], x.box) : x), no: null, yesLabel: m[1], noLabel: o.class,
+                  model: rs => [...rs, newRegion(m[1], b)], modelLabel: 'both', modelBox: b });
+      } else {
+        qs.push({ key, title: `Add ${m[1]}?`, sub: 'not labeled, the model sees it', cat: 'missing', box: b, dashed: true, cls: m[1],
+                  yes: rs => [...rs, newRegion(m[1], b)], no: null, note: n, yesLabel: 'Yes, add', noLabel: 'No' });
+      }
+    } else if (b && (m = t.match(/^class\? labeled (\S+), model sees (\S+)/))) {
+      const r = best(m[1], b);
+      if (r) qs.push({ key, title: 'Class?', sub: `${m[1]} or ${m[2]}`, cat: 'class', box: r.box, target: r, suggest: m[2], note: n,
+                       yes: rs => rs.map(x => x === r ? newRegion(m[2], x.box) : x), no: null, yesLabel: m[2], noLabel: m[1] });
+    } else if (b && (m = t.match(/^model disagrees: (\S+)/))) {
+      const r = best(m[1], b); if (r) { keepOrDrop(key, r, `Keep ${m[1]}?`, 'the model does not see it'); qs[qs.length - 1].note = n; }
+    } else if ((m = t.match(/^odd place for (\S+) at (\d?\.\d+),\s*(\d?\.\d+)/))) {
+      const x0 = parseFloat(m[2]), y0 = parseFloat(m[3]);
+      const r = regions.filter(x => x.class === m[1]).sort((a, c) => Math.hypot(a.box[0] - x0, a.box[1] - y0) - Math.hypot(c.box[0] - x0, c.box[1] - y0))[0];
+      if (r) { keepOrDrop(key, r, `Keep ${m[1]}?`, 'an odd place for it'); qs[qs.length - 1].note = n; }
+    } else if (/^timebank at \d+ seats/.test(t)) {
+      for (const r of regions.filter(x => x.class === 'timebank')) { keepOrDrop(key + ':' + qfBoxKey(r), r, 'Keep timebank?', 'timebanks at several seats'); qs[qs.length - 1].note = n; }
+    } else {
+      for (const r of noteRegions(n, regions).slice(0, 3)) { keepOrDrop(key + ':' + qfBoxKey(r), r, `Keep ${r.class}?`, n.text.slice(0, 90)); qs[qs.length - 1].note = n; }
+    }
+  }
+  if (qf.mode !== 'notes') for (const c of constraints) {
+    if (c.on === false || !c.name || isAcked(path, c)) continue;
+    for (const r of constraintOffenders(c, regions).boxes) {
+      keepOrDrop('c:' + c.name + ':' + qfBoxKey(r), r, `Keep ${r.class}?`, c.name, 'rule'); qs[qs.length - 1].rule = c;
+    }
+  }
+  return qs.filter(q => !done.has(q.key));
+}
+let qfEditorHover = false;
+document.getElementById('modal-overlay').addEventListener('mouseenter', () => { qfEditorHover = true; });
+document.getElementById('modal-overlay').addEventListener('mouseleave', () => { qfEditorHover = false; });
+const qfEditing = path => modalOpen && images[modalIndex] === path;
+async function qfEditorKeep() {  // the editor's boxes of the image it shows: into Quick Fix and saved
+  if (!modalOpen) return;
+  const pth = images[modalIndex];
+  const s1 = JSON.stringify(modalRegions), s0 = JSON.stringify(imageCache[pth]?.regions || []);
+  qf.regions[pth] = JSON.parse(s1);
+  if (s1 !== s0) { imageCache[pth].regions = JSON.parse(s1); if (hist[pth]) histTrack(pth, modalRegions); await saveImageLabels(pth); }
+}
+async function qfSyncEditor(path) {
+  const i = images.indexOf(path);
+  if (i < 0) return;
+  if (qfEditing(path)) return;
+  await qfEditorKeep();
+  // the new image's boxes in place before its picture loads: an answer meanwhile never mixes two images' boxes
+  imageCache[path] = { ...(imageCache[path] || { img: null }), regions: JSON.parse(JSON.stringify(qf.regions[path])) };
+  modalRegions = JSON.parse(JSON.stringify(qf.regions[path]));
+  if (!modalOpen) openModal(i); else { modalIndex = i; modalSelectedIdx = -1; loadModalImage(); }
+}
+async function qfOpen(mode) {
+  qf.mode = mode; qf.ii = 0; qf.si = 0; qf.tot = {}; qf.done = {}; qf.answered = {}; qf.hist = []; qf.stats = { fixed: 0, kept: 0, skipped: 0 }; qf.regions = {};
+  setStatus('Quick Fix: reading labels…');
+  const boxes = await fetchLabelBoxes(images);
+  for (const pth of images) {
+    const c = imageCache[pth]?.regions;
+    qf.regions[pth] = c ? JSON.parse(JSON.stringify(c))
+      : (boxes[pth] || []).map(b => ({ class: classNames[b[0]], class_id: +b[0], box: b.slice(1, 5).map(Number) }));
+  }
+  const groups = {}, all = [];
+  for (const pth of images) {
+    const qs = qfQuestions(pth, qf.regions[pth]);
+    if (qs.length) all.push(pth);
+    for (const q of qs) {
+      const c = qfClassOf(q), g = (groups[c + '|' + q.cat] = groups[c + '|' + q.cat] || { cls: c, cat: q.cat, paths: [], at: {} });
+      if (g.paths[g.paths.length - 1] !== pth) { g.paths.push(pth); g.at[pth] = q.box; }
+      qf.tot[c] = (qf.tot[c] || 0) + 1;
+    }
+  }
+  const ci = c => { const i = Object.values(classNames).indexOf(c); return i < 0 ? 1e9 : i; };
+  qf.stages = Object.values(groups).sort((a, b) => ci(a.cls) - ci(b.cls) || a.cls.localeCompare(b.cls) || QF_CATS.indexOf(a.cat) - QF_CATS.indexOf(b.cat));
+  let sizes = {};
+  try { sizes = await (await fetch('/image_sizes', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ images: all }) })).json(); } catch { }
+  for (const g of qf.stages) g.paths = qfChain(g.paths, g.at, sizes);
+  qf.stages.push({ rest: true, paths: all });  // last: whatever the answers / edits brought up meanwhile
+  qf.paths = all;
+  if (!qf.paths.length) { setStatus(`Quick Fix (${mode}): nothing to ask on these ${images.length} images`); return; }
+  document.body.classList.add('qf-split');
+  document.getElementById('qf').classList.add('open');
+  document.getElementById('qf-mode').textContent = 'Quick Fix · ' + mode;
+  qfShow();
+}
+// the room of an image: its source in the file name (dataset__source__frame), the frame number cut off
+const qfRoom = pth => { const parts = pth.split(/[/\\]/).pop().split('__'); return (parts[1] || parts[0]).replace(/[_-]?\d+(\.\w+)?$/, ''); };
+// images grouped by aspect ratio, then room; inside a group, an order where the asked box moves least from one to
+// the next: nearest neighbour, from the top-left (the first group) / from where the previous group ended
+// ponytail: greedy O(n^2), fine for a few hundred images per stage
+function qfChain(paths, at, sizes = {}) {
+  const ar = pth => { const z = sizes[pth]; return z ? (z[0] / z[1]).toFixed(1) : '?'; };
+  const groups = {};
+  for (const pth of paths) (groups[ar(pth) + '|' + qfRoom(pth)] = groups[ar(pth) + '|' + qfRoom(pth)] || []).push(pth);
+  const out = [];
+  let x = 0, y = 0;
+  for (const k of Object.keys(groups).sort()) {
+    const left = groups[k];
+    while (left.length) {
+      const cur = left.reduce((a, b) => Math.hypot(at[a][0] - x, at[a][1] - y) <= Math.hypot(at[b][0] - x, at[b][1] - y) ? a : b);
+      out.push(cur); left.splice(left.indexOf(cur), 1);
+      [x, y] = at[cur];
+    }
+  }
+  return out;
+}
+// jump to a stage; going back, to the nearest earlier one that still has questions
+function qfStageLeft(si) { const st = qf.stages[si]; return st.paths.some(pth => qfStageQs(pth, st).length); }
+function qfJump(si, dir = 1) {
+  while (dir < 0 && si > 0 && !qfStageLeft(si)) si--;
+  if (si < 0 || si >= qf.stages.length) return;
+  qf.si = si; qf.ii = 0; qfShow();
+}
+function qfJumpClass(dir) {
+  const cur = qf.stages[qf.si]?.cls;
+  if (dir > 0) { const i = qf.stages.findIndex((x, i) => i > qf.si && x.cls !== cur); if (i >= 0) qfJump(i); return; }
+  let i = qf.si; while (i > 0 && qf.stages[i].cls === cur) i--;  // the class before: its first stage with questions
+  const prev = qf.stages[i].cls; if (prev === cur) return;
+  while (i > 0 && qf.stages[i - 1].cls === prev) i--;
+  for (let j = i; qf.stages[j].cls === prev; j++) if (qfStageLeft(j)) return qfJump(j);
+}
+function qfDrawClasses() {  // one bar per class: answered / asked, the current class larger
+  const box = document.getElementById('qf-classes'); box.innerHTML = '';
+  const cur = qfClassOf(qf.q);
+  for (const c of [...new Set(qf.stages.filter(x => !x.rest).map(x => x.cls))]) {
+    const t = qf.tot[c] || 0, d = Math.min(qf.done[c] || 0, t);
+    const row = document.createElement('div'); row.className = 'qf-cl' + (c === cur ? ' cur' : '') + (d >= t ? ' end' : '');
+    const nm = document.createElement('span'); nm.textContent = c + (c === cur ? ' · ' + qf.q.cat : '');
+    const b = document.createElement('div'); b.className = 'b';
+    const f = document.createElement('div'); f.style.width = (100 * d / Math.max(1, t)) + '%'; f.style.background = colors[c] || '#4ade80';
+    b.appendChild(f);
+    const n = document.createElement('span'); n.textContent = `${d} / ${t}`;
+    row.append(nm, b, n); box.appendChild(row);
+    row.onclick = () => qfJump(qf.stages.findIndex(x => x.cls === c));
+    if (c !== cur) continue;
+    const cats = document.createElement('div'); cats.className = 'qf-cats';  // this class's categories: click to switch
+    qf.stages.forEach((x, i) => {
+      if (x.cls !== c) return;
+      const bt = document.createElement('button'); bt.className = i === qf.si ? 'on' : '';
+      bt.textContent = ({ missing: '➕ ', exists: '❔ ', class: '🏷 ', rule: '⚠ ' }[x.cat] || '') + x.cat + ' ' + x.paths.length;
+      bt.onclick = () => qfJump(i); cats.appendChild(bt);
+    });
+    box.appendChild(cats);
+  }
+}
+async function qfClose() {
+  await qfEditorKeep();
+  if (modalOpen) closeModal();
+  document.body.classList.remove('qf-split');
+  qfEditorHover = false;
+  document.getElementById('qf').classList.remove('open');
+  redrawAllGridCanvases();
+  setStatus(`Quick Fix: ${qf.stats.fixed} fixed, ${qf.stats.kept} kept, ${qf.stats.skipped} skipped`);
+}
+async function qfShow() {
+  if (modalOpen && qfPath() === images[modalIndex]) qf.regions[images[modalIndex]] = JSON.parse(JSON.stringify(modalRegions));
+  for (; qf.si < qf.stages.length; qf.si++, qf.ii = 0) {
+    const st = qf.stages[qf.si];
+    while (qf.ii < st.paths.length && !qfStageQs(st.paths[qf.ii], st).length) qf.ii++;
+    if (qf.ii < st.paths.length) break;
+  }
+  if (qf.si >= qf.stages.length) { qfClose(); return; }
+  const st = qf.stages[qf.si], path = qfPath();
+  await qfSyncEditor(path);
+  const last = qf.q?.box, sqs = qfStageQs(path, st);
+  qf.q = last ? sqs.reduce((a, b) => Math.hypot(a.box[0] - last[0], a.box[1] - last[1]) <= Math.hypot(b.box[0] - last[0], b.box[1] - last[1]) ? a : b) : sqs[0];
+  document.getElementById('qf-pos').textContent = (st.rest ? 'the rest' : `${st.cls} · ${st.cat}`) + ` · image ${qf.ii + 1} / ${st.paths.length}`;
+  const T = Object.values(qf.tot).reduce((a, b) => a + b, 0), D = Object.values(qf.done).reduce((a, b) => a + b, 0);
+  document.querySelector('#qf-bar div').style.width = (100 * Math.min(1, D / Math.max(1, T))) + '%';
+  qfDrawClasses();
+  document.getElementById('qf-stats').textContent = `fixed ${qf.stats.fixed} · kept ${qf.stats.kept} · skipped ${qf.stats.skipped}`;
+  document.getElementById('qf-file').textContent = path.split(/[/\\]/).pop();
+  const q = qf.q;
+  const CAT = { missing: '➕ a gap in the labels?', exists: '❔ is it really there?', class: '🏷 which class?', rule: '⚠ rule' };
+  document.getElementById('qf-cat').textContent = q.cat === 'rule' ? `⚠ ${q.sub}` : (CAT[q.cat] || '');
+  document.getElementById('qf-q').innerHTML = '';
+  const qt = document.getElementById('qf-q');
+  qt.textContent = q.title;
+  const sm = document.createElement('small'); sm.textContent = q.sub || ''; qt.appendChild(sm);
+  const opts = document.getElementById('qf-opts'); opts.innerHTML = '';
+  const btn = (label, key, fn, cls) => {
+    const b = document.createElement('button'); b.className = cls || '';
+    b.innerHTML = ''; b.append(label); if (key) { const k = document.createElement('kbd'); k.textContent = key; b.appendChild(k); }
+    b.onclick = fn; opts.appendChild(b);
+  };
+  btn(q.yesLabel || (q.yes ? 'Yes, add' : 'Yes, keep'), 'Y', () => qfAnswer('yes'), 'main');
+  btn(q.noLabel || (q.no ? 'No, delete' : 'No'), 'N', () => qfAnswer('no'));
+  if (q.model) btn(q.modelLabel || "Model's box", 'M', () => qfAnswer('model'));
+  btn('Skip', 'Space', () => qfAnswer('skip'));
+  if (q.target || q.cls) for (const [k, name] of Object.entries(hotkeys)) btn(name, k, () => qfAnswer('class', name), 'cls');
+  // the same choices next to the box, for the mouse
+  const oc = document.getElementById('qf-outcomes'); oc.innerHTML = '';
+  qf.outs = qfOutcomeOptions(q).map(o => ({ ...o, ...qfOutcome(q, o, qf.regions[path]) }));
+  const KEYC = { Y: '#4ade80', N: '#ff6b6b', M: '#4aa3ff' };
+  for (const o of qf.outs) {
+    const row = document.createElement('div'); row.className = 'qf-out' + (o.broke.length ? ' bad' : '');
+    row.onclick = () => qfAnswer(o.kind, o.cls);
+    const k = document.createElement('kbd'); k.textContent = o.key || '·';
+    k.style.background = KEYC[o.key] || colors[o.cls] || '#ffd27a'; row.appendChild(k);
+    const ob = document.createElement('div'); ob.className = 'qf-ob';
+    const pl = document.createElement('span'); pl.className = 'qf-pill'; pl.textContent = o.label;
+    const pc = o.label === 'deleted' || o.label === 'not added' ? '#555' : (colors[o.cls] || '#4ade80');
+    pl.style.background = pc; pl.style.color = getContrastColor(pc);
+    if (o.label === 'deleted' || o.label === 'not added') pl.style.textDecoration = 'line-through';
+    ob.appendChild(pl);
+    const cv = document.createElement('canvas'); cv.width = 210; cv.height = 80; o.canvas = cv; ob.appendChild(cv);
+    if (o.broke.length) { const w = document.createElement('span'); w.className = 'qf-warn'; w.textContent = '⚠ ' + o.broke.join(', '); ob.appendChild(w); }
+    row.appendChild(ob);
+    oc.appendChild(row);
+  }
+  for (const id of ['qf-float', 'qf-mid-ask']) {  // the same question and choices: by the box, and in the fixed middle column
+    const fl = document.getElementById(id); fl.innerHTML = '';
+    const nm = document.createElement('div'); nm.className = 'qf-name';  // the box's class (a proposal: the model's class)
+    const nmCls = q.target?.class || q.cls || '';
+    nm.textContent = nmCls + (q.target ? '' : ' · model');
+    nm.style.background = colors[nmCls] || '#4ade80'; nm.style.color = getContrastColor(colors[nmCls] || '#4ade80');
+    fl.appendChild(nm);
+    const qa = document.createElement('div'); qa.className = 'qf-ask';
+    qa.textContent = ({ missing: '➕ ', exists: '❔ ', class: '🏷 ', rule: '⚠ ' }[q.cat] || '') + q.title;
+    const qs2 = document.createElement('small'); qs2.textContent = q.sub || ''; qa.appendChild(qs2);
+    fl.appendChild(qa);
+    const fb = (label, fn, cls) => { const b = document.createElement('button'); b.textContent = label; b.className = cls || ''; b.onclick = fn; fl.appendChild(b); };
+    fb('✔ ' + (q.yesLabel || (q.yes ? 'add' : 'keep')) + (id === 'qf-mid-ask' ? '  (Y)' : ''), () => qfAnswer('yes'), 'main');
+    fb('✘ ' + (q.noLabel || (q.no ? 'delete' : 'no')) + (id === 'qf-mid-ask' ? '  (N)' : ''), () => qfAnswer('no'));
+    if (q.model) fb('⇄ ' + (q.modelLabel || "model's box") + (id === 'qf-mid-ask' ? '  (M)' : ''), () => qfAnswer('model'));
+    if (q.cat === 'class' && q.target) for (const name of [q.target.class, q.suggest]) fb('🏷 ' + name, () => qfAnswer('class', name));
+    fb('» skip' + (id === 'qf-mid-ask' ? '  (Space)' : ''), () => qfAnswer('skip'));
+  }
+  if (qf.img?.dataset.path !== path) {
+    const img = new Image(); img.dataset.path = path; img.onload = () => { if (qf.img === img) qfDraw(); };
+    img.src = `/image?path=${encodeURIComponent(path)}`; qf.img = img;
+  }
+  qfDraw();
+}
+function qfDraw() {
+  const cv = document.getElementById('qf-canvas'), img = qf.img, q = qf.q;
+  const W = cv.clientWidth, H = cv.clientHeight; cv.width = W; cv.height = H;
+  const g = cv.getContext('2d'); g.fillStyle = '#050505'; g.fillRect(0, 0, W, H);
+  if (!img || !img.complete || !img.naturalWidth || !q) return;
+  const sc = Math.min(W / img.naturalWidth, H / img.naturalHeight), iw = img.naturalWidth * sc, ih = img.naturalHeight * sc;
+  const ox = (W - iw) / 2, oy = (H - ih) / 2;
+  g.drawImage(img, ox, oy, iw, ih);
+  const b = q.box, x = ox + (b[0] - b[2] / 2) * iw, y = oy + (b[1] - b[3] / 2) * ih, w = b[2] * iw, h = b[3] * ih, pad = 6;
+  // boxes lying over the asked one (an overlap of two classes): shown with it, named
+  const ov = (a, c) => {
+    const ix = Math.max(0, Math.min(a[0] + a[2] / 2, c[0] + c[2] / 2) - Math.max(a[0] - a[2] / 2, c[0] - c[2] / 2));
+    const iy = Math.max(0, Math.min(a[1] + a[3] / 2, c[1] + c[3] / 2) - Math.max(a[1] - a[3] / 2, c[1] - c[3] / 2));
+    return ix * iy / Math.max(1e-9, Math.min(a[2] * a[3], c[2] * c[3]));
+  };
+  const related = (qf.regions[qfPath()] || []).filter(r => r !== q.target && ov(r.box, b) > 0.3);
+  const px = bb => [ox + (bb[0] - bb[2] / 2) * iw, oy + (bb[1] - bb[3] / 2) * ih, bb[2] * iw, bb[3] * ih];
+  let [ux, uy, uw, uh] = [x, y, w, h];  // the lit area: the asked box and those over it
+  for (const r of related) {
+    const [rx, ry, rw, rh] = px(r.box);
+    const x2 = Math.max(ux + uw, rx + rw), y2 = Math.max(uy + uh, ry + rh);
+    ux = Math.min(ux, rx); uy = Math.min(uy, ry); uw = x2 - ux; uh = y2 - uy;
+  }
+  g.fillStyle = 'rgba(0,0,0,0.55)';  // everything but the asked area steps back
+  g.fillRect(ox, oy, iw, Math.max(0, uy - pad - oy)); g.fillRect(ox, uy + uh + pad, iw, Math.max(0, oy + ih - uy - uh - pad));
+  g.fillRect(ox, uy - pad, Math.max(0, ux - pad - ox), uh + 2 * pad); g.fillRect(ux + uw + pad, uy - pad, Math.max(0, ox + iw - ux - uw - pad), uh + 2 * pad);
+  for (const r of related) {
+    const [rx, ry, rw, rh] = px(r.box), rc = colors[r.class] || '#ffd27a';
+    g.setLineDash([5, 4]); g.lineWidth = 1.5; g.strokeStyle = rc; g.strokeRect(rx, ry, rw, rh); g.setLineDash([]);
+    g.font = 'bold 12px sans-serif';
+    const tw = g.measureText(r.class).width + 8;
+    g.fillStyle = rc; g.fillRect(rx, ry + rh, tw, 16);
+    g.fillStyle = getContrastColor(rc); g.fillText(r.class, rx + 4, ry + rh + 12);
+  }
+  const col = colors[q.target?.class || q.cls] || '#4ade80';
+  g.lineWidth = 3; g.strokeStyle = '#000'; g.strokeRect(x - 3, y - 3, w + 6, h + 6);
+  if (q.dashed) g.setLineDash([8, 5]);
+  g.lineWidth = 2; g.strokeStyle = col; g.strokeRect(x - 3, y - 3, w + 6, h + 6); g.setLineDash([]);
+  if (q.modelBox) {  // the model's box, dashed, next to the labeled one
+    const mb = q.modelBox;
+    g.setLineDash([6, 4]); g.lineWidth = 2; g.strokeStyle = '#4aa3ff';
+    g.strokeRect(ox + (mb[0] - mb[2] / 2) * iw, oy + (mb[1] - mb[3] / 2) * ih, mb[2] * iw, mb[3] * ih); g.setLineDash([]);
+  }
+  // the mouse options: right of the box, else left of it
+  const fl = document.getElementById('qf-float');
+  const fw = fl.offsetWidth || 120, fh = fl.offsetHeight || 80;
+  fl.style.left = (x + w + 12 + fw < W ? x + w + 12 : Math.max(4, x - 12 - fw)) + 'px';
+  fl.style.top = Math.min(Math.max(4, y), H - fh - 4) + 'px';
+  // the asked area, enlarged
+  const z = document.getElementById('qf-zoom'), zg = z.getContext('2d');
+  const sx = (b[0] - b[2] / 2) * img.naturalWidth, sy = (b[1] - b[3] / 2) * img.naturalHeight, sw = b[2] * img.naturalWidth, sh = b[3] * img.naturalHeight;
+  // the asked box and the ones related to it (over it, the model's), with a margin, in their own proportions:
+  // the width is fixed (260 px), the height follows (80..560 px)
+  let ux1 = sx, uy1 = sy, ux2 = sx + sw, uy2 = sy + sh;
+  for (const bb of [...related.map(r => r.box), ...(q.modelBox ? [q.modelBox] : [])]) {
+    ux1 = Math.min(ux1, (bb[0] - bb[2] / 2) * img.naturalWidth); uy1 = Math.min(uy1, (bb[1] - bb[3] / 2) * img.naturalHeight);
+    ux2 = Math.max(ux2, (bb[0] + bb[2] / 2) * img.naturalWidth); uy2 = Math.max(uy2, (bb[1] + bb[3] / 2) * img.naturalHeight);
+  }
+  const m = 0.25 * Math.max(ux2 - ux1, uy2 - uy1);
+  let cw = ux2 - ux1 + 2 * m, ch = uy2 - uy1 + 2 * m;
+  const zh = Math.max(80, Math.min(560, Math.round(260 * ch / cw)));
+  if (zh === 80) ch = cw * 80 / 260; else if (zh === 560) cw = ch * 260 / 560;  // clamped: the crop widens instead
+  if (z.height !== zh) z.height = zh;
+  zg.fillStyle = '#000'; zg.fillRect(0, 0, z.width, z.height);
+  const zx0 = (ux1 + ux2) / 2 - cw / 2, zy0 = (uy1 + uy2) / 2 - ch / 2, k = z.width / cw;
+  zg.drawImage(img, zx0, zy0, cw, ch, 0, 0, z.width, z.height);
+  qfDrawOutcomes(img, zx0, zy0, cw, ch);
+  // the main box stands out: the rest a little darker, nothing drawn over the boxes' own pixels (outlines run 3 px
+  // outside them) - small elements stay readable
+  const G = 3, mx = (sx - zx0) * k, my = (sy - zy0) * k, mw = sw * k, mh = sh * k;
+  zg.save();
+  zg.beginPath(); zg.rect(0, 0, z.width, z.height); zg.rect(mx, my, mw, mh);
+  zg.fillStyle = 'rgba(0,0,0,0.28)'; zg.fill('evenodd');
+  zg.restore();
+  zg.lineWidth = 2; zg.strokeStyle = '#000'; zg.strokeRect(mx - G - 1, my - G - 1, mw + 2 * G + 2, mh + 2 * G + 2);
+  zg.strokeStyle = col; if (q.dashed) zg.setLineDash([6, 4]);
+  zg.strokeRect(mx - G, my - G, mw + 2 * G, mh + 2 * G); zg.setLineDash([]);
+  if (q.modelBox) {
+    const mb = q.modelBox;
+    zg.setLineDash([6, 4]); zg.lineWidth = 2; zg.strokeStyle = '#4aa3ff';
+    zg.strokeRect(((mb[0] - mb[2] / 2) * img.naturalWidth - zx0) * k - G, ((mb[1] - mb[3] / 2) * img.naturalHeight - zy0) * k - G,
+                  mb[2] * img.naturalWidth * k + 2 * G, mb[3] * img.naturalHeight * k + 2 * G); zg.setLineDash([]);
+  }
+  for (const r of related) {
+    const rx = (r.box[0] - r.box[2] / 2) * img.naturalWidth, ry = (r.box[1] - r.box[3] / 2) * img.naturalHeight;
+    zg.setLineDash([4, 4]); zg.lineWidth = 1; zg.strokeStyle = colors[r.class] || '#ffd27a';
+    zg.strokeRect((rx - zx0) * k - G, (ry - zy0) * k - G, r.box[2] * img.naturalWidth * k + 2 * G, r.box[3] * img.naturalHeight * k + 2 * G); zg.setLineDash([]);
+    const rc = colors[r.class] || '#ffd27a';  // named, as on the preview
+    zg.font = 'bold 11px sans-serif';
+    const tw = zg.measureText(r.class).width + 6, ly = Math.min(z.height - 14, (ry - zy0 + r.box[3] * img.naturalHeight) * k + G + 1);
+    zg.fillStyle = rc; zg.fillRect((rx - zx0) * k, ly, tw, 14);
+    zg.fillStyle = getContrastColor(rc); zg.fillText(r.class, (rx - zx0) * k + 3, ly + 11);
+  }
+}
+window.addEventListener('resize', () => { if (document.getElementById('qf').classList.contains('open')) qfDraw(); });
+// each answer's result over the zoom's area: its boxes outlined outside their pixels, the asked one brighter
+function qfDrawOutcomes(img, zx0, zy0, cw, ch) {
+  const q = qf.q;
+  for (const o of qf.outs || []) {
+    const c = o.canvas; if (!c) continue;
+    // 210 px wide, at most 110 tall (a tall crop: narrower instead, never stretched)
+    let ow = 210, oh = Math.round(ow * ch / cw); if (oh > 110) { ow = Math.round(110 * cw / ch); oh = 110; } oh = Math.max(40, oh);
+    if (c.width !== ow) c.width = ow; if (c.height !== oh) c.height = oh;
+    const g = c.getContext('2d'), k = ow / cw, W = img.naturalWidth, H = img.naturalHeight, G = 2;
+    g.drawImage(img, zx0, zy0, cw, ch, 0, 0, ow, oh);
+    for (const r of o.after) {
+      const x = (r.box[0] - r.box[2] / 2) * W, y = (r.box[1] - r.box[3] / 2) * H, w = r.box[2] * W, h = r.box[3] * H;
+      if (x + w < zx0 || y + h < zy0 || x > zx0 + cw || y > zy0 + ch) continue;
+      const main = r === o.main;
+      g.globalAlpha = main ? 1 : 0.55; g.lineWidth = main ? 2 : 1; g.setLineDash(main ? [] : [3, 3]);
+      g.strokeStyle = colors[r.class] || '#ffd27a';
+      g.strokeRect((x - zx0) * k - G, (y - zy0) * k - G, w * k + 2 * G, h * k + 2 * G);
+    }
+    g.globalAlpha = 1; g.setLineDash([]);
+  }
+}
+// the editor on the right changed the asked image's boxes (a class, a delete, a move): the questions follow at once
+let qfEditorTimer = null;
+function qfOnEditorChange() {
+  if (!document.getElementById('qf').classList.contains('open') || !modalOpen || qfSetting) return;
+  const path = qfPath();
+  if (images[modalIndex] !== path) return;
+  const sig = rs => (rs || []).map(r => r.class + ':' + r.box.map(v => (+v).toFixed(4)).join(',')).join('|');
+  if (sig(modalRegions) === sig(qf.regions[path])) return;
+  const cur = JSON.stringify(modalRegions);
+  clearTimeout(qfEditorTimer);
+  qfEditorTimer = setTimeout(() => { qf.regions[path] = JSON.parse(cur); qfShow(); }, 120);
+}
+const qfRenderModal = renderModal;
+renderModal = function () { qfRenderModal.apply(this, arguments); qfOnEditorChange(); };
+async function qfSet(path, regions) {  // the image's boxes, saved now (one Ctrl+Z step on the grid too)
+  qf.regions[path] = regions;
+  imageCache[path] = imageCache[path] || { img: null, regions: null };
+  imageCache[path].regions = JSON.parse(JSON.stringify(regions));
+  const i = images.indexOf(path);
+  if (editInGrid && gridEditIndex === i) { gridEditRegions = JSON.parse(JSON.stringify(regions)); gridEditSelectedIdx = -1; }
+  if (hist[path]) histTrack(path, regions);
+  if (qfEditing(path)) {
+    qfSetting = true;  // Quick Fix's own change: not an editor edit
+    modalRegions = JSON.parse(JSON.stringify(regions)); modalSelectedIdx = -1; renderModal(); renderModalRegionsList();
+    qfSetting = false;
+  }
+  await saveImageLabels(path);
+}
+function qfResult(q, kind, cls, before) {  // the boxes an answer leaves (the same object: nothing changes)
+  if (kind === 'yes' && q.yes) return q.yes(before);
+  if (kind === 'no' && q.no) return q.no(before);
+  if (kind === 'model' && q.model) return q.model(before);
+  if (kind === 'class') {
+    if (q.target) return before.map(x => x === q.target ? newRegion(cls, x.box) : x);
+    return [...before, newRegion(cls, q.box)];  // a proposal: added as this class
+  }
+  return before;
+}
+// the answers worth a preview: [{kind, cls?, key, label}]
+function qfOutcomeOptions(q) {
+  const out = [{ kind: 'yes', key: 'Y' }, { kind: 'no', key: 'N' }];
+  if (q.model) out.push({ kind: 'model', key: 'M' });
+  return out;
+}
+// what the asked box becomes, and the rules the answer newly breaks
+function qfOutcome(q, o, before) {
+  const after = qfResult(q, o.kind, o.cls, before);
+  let label, cls, main = null;  // main: the asked box in the result (none: deleted / not added)
+  if (q.target) {
+    const i = before.indexOf(q.target);
+    main = after.length >= before.length ? after[i] : null;
+    if (!main) { label = 'deleted'; cls = q.target.class; }
+    else { cls = main.class; label = main.class + (main.class !== q.target.class ? ' (new)' : ''); }
+    if (after.length > before.length) label += ' + ' + after[after.length - 1].class;
+  } else {
+    if (after.length > before.length) { main = after[after.length - 1]; cls = main.class; label = cls + ' (added)'; }
+    else { cls = q.cls; label = 'not added'; }
+  }
+  const broke = constraints.filter(c => c.on !== false && c.name && checkConstraint(c, after) > checkConstraint(c, before)).map(c => c.name);
+  return { after, label, cls, broke, main };
+}
+async function qfAnswer(kind, cls) {
+  const q = qf.q, path = qfPath();
+  if (!q) return;
+  const sig = rs => (rs || []).map(r => r.class + ':' + r.box.map(v => (+v).toFixed(4)).join(',')).join('|');
+  if (qfEditing(path) && sig(modalRegions) !== sig(qf.regions[path])) {
+    await qfEditorKeep(); qfShow(); return;  // the boxes were edited meanwhile: the questions are asked again on them
+  }
+  const before = qf.regions[path];
+  const after = qfResult(q, kind, cls, before);
+  (qf.answered[path] = qf.answered[path] || new Set()).add(q.key);
+  const noteWas = q.note ? isNoteDone(path, q.note) : null;
+  if (q.note && kind !== 'skip') setNoteDone(path, q.note, true);
+  const qc = qfClassOf(q); qf.done[qc] = (qf.done[qc] || 0) + 1;
+  qf.hist.push({ si: qf.si, ii: qf.ii, qc, path, key: q.key, before, note: q.note, noteWas, kind, changed: after !== before });
+  if (after !== before) { qf.stats.fixed++; await qfSet(path, after.map(r => ({ ...r, box: [...r.box] }))); }
+  else if (kind === 'skip') qf.stats.skipped++;
+  else qf.stats.kept++;
+  // a rule kept as it is for every box it names: accepted for this image
+  if (q.rule && kind !== 'skip' && checkConstraint(q.rule, qf.regions[path]) > 0 && !isAcked(path, q.rule)
+      && !qfQuestions(path, qf.regions[path]).some(x => x.rule === q.rule)) { toggleAck(path, q.rule); qf.hist[qf.hist.length - 1].acked = q.rule; }
+  qfShow();
+}
+async function qfBack() {
+  const h = qf.hist.pop();
+  if (!h) return;
+  qf.si = h.si; qf.ii = h.ii; qf.done[h.qc]--;
+  qf.answered[h.path].delete(h.key);
+  if (h.note) setNoteDone(h.path, h.note, h.noteWas);
+  if (h.acked) toggleAck(h.path, h.acked);
+  if (h.changed) { qf.stats.fixed--; await qfSet(h.path, h.before); }
+  else if (h.kind === 'skip') qf.stats.skipped--;
+  else qf.stats.kept--;
+  qfShow();
+}
+document.addEventListener('keydown', e => {
+  if (!document.getElementById('qf').classList.contains('open')) return;
+  if (qfEditorHover && e.key !== 'Escape') return;  // the cursor over the editor: its keys
+  e.preventDefault(); e.stopImmediatePropagation();
+  if (e.repeat && e.key !== 'Backspace') return;
+  if (e.key === 'Escape') return qfClose();
+  if (e.key === 'Backspace') return qfBack();
+  if (e.key === 'Tab') return qfJump(qf.si + (e.shiftKey ? -1 : 1), e.shiftKey ? -1 : 1);
+  if (e.key === 'PageDown' || e.key === 'PageUp') return qfJumpClass(e.key === 'PageDown' ? 1 : -1);
+  if (e.key === ' ') return qfAnswer('skip');
+  if (e.key === 'Enter' || e.code === 'KeyY') return qfAnswer('yes');
+  if (e.key === 'Delete' || e.code === 'KeyN') return qfAnswer('no');
+  if (e.code === 'KeyM' && qf.q?.model) return qfAnswer('model');
+  const k = hotkeyOf(e);
+  if (hotkeys[k] && (qf.q?.target || qf.q?.cls)) qfAnswer('class', hotkeys[k]);
+}, true);
 
 // ---- undo / redo (Ctrl+Z / Ctrl+Shift+Z or Ctrl+Y), per image: snapshots of its boxes taken as edits are saved.
 // Edits closer than HIST_MERGE_MS are one step (a drag saves many times); a middle-button stroke is one step
